@@ -154,3 +154,5 @@ Thumbs.db
 
 # Specific data files
 rvus.csv
+*.xlsx
+*.xls
