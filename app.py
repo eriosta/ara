@@ -57,26 +57,81 @@ def process_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
+def check_time_data(df: pd.DataFrame) -> bool:
+    """Check if datetime data includes time information"""
+    if df is None or df.empty:
+        return False
+    
+    # Check if any datetime has time component (not just date)
+    sample_dates = df["DICTATION DTTM"].dropna().head(10)
+    if sample_dates.empty:
+        return False
+    
+    # Check if any date has time component (hour, minute, second not all zero)
+    has_time = any(
+        dt.hour != 0 or dt.minute != 0 or dt.second != 0 or dt.microsecond != 0
+        for dt in sample_dates
+    )
+    return has_time
+
 # ======================== CLASSIFICATION FUNCTIONS ========================
 BODY_PART_PATTERNS = {
+    "Head/Neck": r"\bHEAD|NECK|BRAIN|SKULL|ORBITS|FACIAL|SINUS|TEMPORAL|PITUITARY|CRANIAL\b",
     "Chest": r"\bCHEST\b",
     "Abdomen": r"\bABDOMEN\b",
     "Pelvis": r"\bPELVIS\b|\bPELVIC\b",
-    "Knee": r"\bKNEE(S)?\b",
-    "Hip": r"\bHIP(S)?\b",
-    "Shoulder": r"\bSHOULDER(S)?\b",
-    "Hand": r"\bHAND(S)?\b|FINGER",
-    "Foot": r"\bFOOT|FEET\b",
-    "Elbow": r"\bELBOW\b",
-    "Ankle": r"\bANKLE\b",
-    "Spine": r"\bSPINE|LUMBOSACRAL|L SPINE|T SPINE|C SPINE\b",
+    "Spine": r"\bSPINE|LUMBOSACRAL|L SPINE|T SPINE|C SPINE|CERVICAL|THORACIC|LUMBAR|SACRUM|COCCYX\b",
+    "Upper Extremity": r"\bSHOULDER|ELBOW|WRIST|HAND|FINGER|HUMERUS|FOREARM|CLAVICLE\b",
+    "Lower Extremity": r"\bHIP|KNEE|ANKLE|FOOT|TOE|FEMUR|TIBIA|FIBULA\b",
+    "Breast": r"\bBREAST|MAMMO\b",
+    "Renal": r"\bRENAL|KIDNEY\b",
+    "Cardiac": r"\bCARDIAC|HEART|ECHO\b",
+    "Vascular": r"\bCAROTID|ARTERIAL|VENOUS|VEIN|ARTERY\b",
 }
 
 def modality_from_desc(s: str) -> str:
     t = s.upper()
-    if "MRI" in t: return "MRI"
-    if "CT" in t: return "CT"
-    if "XR" in t or "X-RAY" in t or "FLUORO" in t: return "Radiograph"
+    
+    # MRI variations
+    if any(x in t for x in ["MRI", "MR "]):
+        if "MRA" in t: return "MRA"
+        if "MRV" in t: return "MRV"
+        return "MRI"
+    
+    # CT variations
+    if "CT" in t:
+        if "CTA" in t: return "CTA"
+        return "CT"
+    
+    # Ultrasound variations
+    if any(x in t for x in ["US ", "ULTRASOUND", "DUPLEX", "DUP "]):
+        if "DUPLEX" in t or "DUP " in t: return "US - Duplex"
+        if "OBSTETRICAL" in t or "PREGNANCY" in t: return "US - Obstetrical"
+        if "PROCEDURE" in t: return "US Procedure"
+        return "US"
+    
+    # X-ray variations
+    if any(x in t for x in ["XR ", "X-RAY", "CHEST", "ABDOMEN", "KNEE", "HAND", "FOOT", "SHOULDER", "ELBOW", "ANKLE", "WRIST", "HIP", "FEMUR", "TIBIA", "HUMERUS", "FINGER", "TOE", "SPINE", "PELVIS", "CLAVICLE", "RIBS", "SINUS", "TEMPORAL", "FACIAL", "ORBITS", "SKULL", "SACRUM", "COCCYX"]):
+        return "Radiography"
+    
+    # Fluoroscopy variations
+    if any(x in t for x in ["FL ", "FLUORO", "BARIUM", "LUMBAR PUNCTURE", "SP "]):
+        if "DYNAMIC" in t: return "Fluoroscopy - Dynamic"
+        if "GUIDANCE" in t: return "Fluoroscopy Guidance"
+        return "Fluoroscopy"
+    
+    # Mammography variations
+    if any(x in t for x in ["MAMMO", "BREAST"]):
+        if "PROCEDURE" in t or "BIOPSY" in t: return "Mammography Procedure"
+        return "Mammography"
+    
+    # Echocardiography
+    if "ECHO" in t: return "Echocardiography"
+    
+    # Invasive procedures
+    if any(x in t for x in ["INVASIVE", "BIOPSY", "PROCEDURE"]):
+        return "Invasive"
+    
     return "Other"
 
 def contrast_phrase(t: str) -> str:
@@ -97,22 +152,34 @@ def region_ct(t: str) -> str:
 def exam_from_desc(s: str) -> str:
     t = re.sub(r"\s+", " ", s.upper()).strip()
     mod = modality_from_desc(t)
-    if mod == "CT":
-        reg = region_ct(t)
-        con = contrast_phrase(t)
-        return f"CT {reg}" + (f" {con}" if con else "")
-    if mod == "MRI":
-        for part in ["KNEE", "SHOULDER", "HIP"]:
-            if part in t:
-                con = contrast_phrase(t) or "w/o Contrast"
-                return f"MRI {part.title()} {con}"
-        return "MRI Other"
-    if mod == "Radiograph":
-        if "CHEST" in t: return "XR Chest"
-        for name, pat in BODY_PART_PATTERNS.items():
-            if re.search(pat, t): return f"XR {name}"
-        return "XR Other"
-    return "Other"
+    
+    # Get body part
+    body_part = body_parts_from_desc(t)
+    if body_part == "Unknown":
+        body_part = "Other"
+    
+    # Get contrast info
+    con = contrast_phrase(t)
+    
+    # Format based on modality
+    if mod in ["CT", "CTA"]:
+        return f"{mod} {body_part}" + (f" {con}" if con else "")
+    elif mod in ["MRI", "MRA", "MRV"]:
+        return f"{mod} {body_part}" + (f" {con}" if con else "")
+    elif mod == "Radiography":
+        return f"XR {body_part}"
+    elif mod in ["US", "US - Duplex", "US - Obstetrical", "US Procedure"]:
+        return f"{mod} {body_part}"
+    elif mod in ["Fluoroscopy", "Fluoroscopy - Dynamic", "Fluoroscopy Guidance"]:
+        return f"{mod} {body_part}"
+    elif mod in ["Mammography", "Mammography Procedure"]:
+        return f"{mod} {body_part}"
+    elif mod == "Echocardiography":
+        return f"{mod} {body_part}"
+    elif mod == "Invasive":
+        return f"{mod} {body_part}"
+    else:
+        return f"{mod} {body_part}"
 
 def body_parts_from_desc(s: str) -> str:
     t = s.upper()
@@ -160,8 +227,7 @@ with st.sidebar.expander("Methods"):
 # ======================== SIDEBAR - DATA INPUT ========================
 goal_rvu_per_day = st.sidebar.number_input(
     "Goal RVUs per Day",
-    min_value=5.0,
-    max_value=50.0,
+    min_value=0.0,
     value=15.0,
     step=0.5,
     help="Set your daily RVU target (default: 15 for residents)"
@@ -199,6 +265,10 @@ except Exception as e:
 
 if df is None:
     st.stop()
+
+# Check if data includes time information and show notification
+if not check_time_data(df):
+    st.toast("💡 **Tip**: Including time data (HH:MM) in your dates adds hourly insights and better efficiency analysis!", icon="⏰")
 
 # ======================== COMPUTE METRICS ========================
 total_rvu = df["WRVU ESTIMATE"].sum()
@@ -275,8 +345,16 @@ daily["date_str"] = daily["date"].astype(str)
 daily_avg = daily["RVU"].mean()
 trend_slope = np.polyfit(range(len(daily)), daily["RVU"], 1)[0] if len(daily) > 1 else 0
 
+# Calculate best day data for highlighting
+best_day_rvu = daily['RVU'].max()
+best_day_date = daily.loc[daily['RVU'].idxmax(), 'date']
+best_day_date_str = best_day_date.strftime('%m/%d/%Y')
+
 # Daily Performance Trend Chart
 with st.container():
+    # Create best day highlight data
+    best_day_data = daily[daily['date'] == best_day_date].copy()
+    
     daily_chart = (
         alt.Chart(daily).mark_line(strokeWidth=3, color="#1f77b4").encode(
             x=alt.X("date_str:T", title="Date"),
@@ -290,7 +368,17 @@ with st.container():
         ) +
         alt.Chart(pd.DataFrame({'y': [resident_daily_target]})).mark_rule(
             strokeDash=[3, 3], color="red", strokeWidth=2
-        ).encode(y='y:Q')
+        ).encode(y='y:Q') +
+        alt.Chart(best_day_data).mark_circle(
+            size=100, color="gold", stroke="black", strokeWidth=2
+        ).encode(
+            x="date_str:T",
+            y="RVU:Q",
+            tooltip=[
+                alt.Tooltip("date_str:T", title="Best Day"),
+                alt.Tooltip("RVU:Q", format=".1f", title="RVUs")
+            ]
+        )
     ).properties(
         title=f"Daily RVU Performance (Target: {resident_daily_target} RVUs/day)", 
         height=300
@@ -309,7 +397,7 @@ with col3:
     trend_icon = "📈" if trend_slope > 0 else "📉" if trend_slope < 0 else "➡️"
     st.metric("Trend", f"{trend_icon} {trend_slope:+.2f}/day", help="Daily RVU change trend")
 with col4:
-    st.metric("Best Day", f"{daily['RVU'].max():.1f}", help="Highest single-day RVUs")
+    st.metric("Best Day", f"{best_day_date_str}", help=f"Highest single-day RVUs: {best_day_rvu:.1f}")
 
 # ======================== EFFICIENCY ANALYSIS ========================
 st.subheader("⏱️ Hourly Efficiency Analysis")
