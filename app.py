@@ -1067,6 +1067,8 @@ with st.container():
 st.subheader("Hourly Efficiency Analysis")
 with st.container():
     hourly_data = df.groupby("hour", as_index=False)["WRVU ESTIMATE"].sum().rename(columns={"WRVU ESTIMATE": "RVU"})
+    # Filter to only show hours >= 8am
+    hourly_data = hourly_data[hourly_data["hour"] >= 8]
     hourly_data["RVU_per_hour"] = hourly_data["RVU"] / len(daily)  # Approximate RVUs per hour
     hourly_data["Efficiency"] = hourly_data["RVU_per_hour"] / resident_hourly_target * 100
 
@@ -1163,6 +1165,8 @@ st.subheader("Schedule Optimization")
 with st.container():
     dow_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     hot = df.groupby(["dow", "hour"], as_index=False)["WRVU ESTIMATE"].sum().rename(columns={"WRVU ESTIMATE": "RVU"})
+    # Filter to only show hours >= 8am
+    hot = hot[hot["hour"] >= 8]
     hot["dow"] = pd.Categorical(hot["dow"], categories=dow_order, ordered=True)
 
     heatmap = alt.Chart(hot).mark_rect().encode(
@@ -1177,14 +1181,117 @@ with st.container():
     st.altair_chart(heatmap, use_container_width=True)
     st.caption("This heatmap visualizes your RVU production across days of the week and hours of the day. Darker shades indicate higher productivity periods, helping identify optimal times to schedule complex cases.")
 
-# Schedule optimization insight - calculate peak from heatmap data
+# Schedule optimization insight - show top 3 and bottom 3 performance periods by schedule type
 if not hot.empty:
-    peak_row = hot.loc[hot['RVU'].idxmax()]
-    peak_dow_actual = peak_row['dow']
-    peak_hour_actual = int(peak_row['hour'])
-    peak_rvu_value = peak_row['RVU']
+    # Sort by RVU descending
+    sorted_hot = hot.sort_values('RVU', ascending=False)
     
-    st.info(f"**Peak Performance Period**: {peak_dow_actual} at {peak_hour_actual}:00. Consider scheduling your most complex cases during this time for maximum efficiency.")
+    if len(sorted_hot) >= 3:
+        # Get top 3 and bottom 3
+        top_3 = sorted_hot.head(3)
+        bottom_3 = sorted_hot.tail(3).sort_values('RVU', ascending=False)  # Sort descending for bottom 3
+        
+        # Categorize periods by schedule type
+        def categorize_hour(hour):
+            """Categorize hour into work schedule, call, or other"""
+            if 8 <= hour <= 12:  # 8am-12pm (inclusive)
+                return "work"
+            elif 13 <= hour < 17:  # 1pm-5pm
+                return "work"
+            elif 17 <= hour < 23:  # 5pm-11pm
+                return "call"
+            else:
+                return "other"  # Hours outside work/call: before 8am, after 11pm
+        
+        # Categorize top 3 and bottom 3
+        top_work = []
+        top_call = []
+        top_other = []
+        bottom_work = []
+        bottom_call = []
+        bottom_other = []
+        
+        for _, row in top_3.iterrows():
+            dow = row['dow']
+            hour = int(row['hour'])
+            rvu = row['RVU']
+            category = categorize_hour(hour)
+            period_str = f"{dow} at {hour}:00 ({rvu:.1f} RVUs)"
+            if category == "work":
+                top_work.append(period_str)
+            elif category == "call":
+                top_call.append(period_str)
+            else:
+                top_other.append(period_str)
+        
+        for _, row in bottom_3.iterrows():
+            dow = row['dow']
+            hour = int(row['hour'])
+            rvu = row['RVU']
+            category = categorize_hour(hour)
+            period_str = f"{dow} at {hour}:00 ({rvu:.1f} RVUs)"
+            if category == "work":
+                bottom_work.append(period_str)
+            elif category == "call":
+                bottom_call.append(period_str)
+            else:
+                bottom_other.append(period_str)
+        
+        # Build display text
+        periods_text = "**Performance Periods**\n\n"
+        
+        # Top 3 section
+        periods_text += "**Top 3**:\n"
+        if top_work:
+            periods_text += "  **Work Schedule (8am-12pm, 1pm-5pm)**:\n"
+            for period in top_work:
+                periods_text += f"    • {period}\n"
+        else:
+            periods_text += "  **Work Schedule (8am-12pm, 1pm-5pm)**:\n    No work hours\n"
+        
+        periods_text += "  **Call Schedule (5pm-11pm)**:\n"
+        if top_call:
+            for period in top_call:
+                periods_text += f"    • {period}\n"
+        else:
+            periods_text += "    No call hours\n"
+        
+        if top_other:
+            periods_text += "  **Other Hours** (outside work/call schedule):\n"
+            for period in top_other:
+                periods_text += f"    • {period}\n"
+        
+        periods_text += "\n"
+        
+        # Bottom 3 section
+        periods_text += "**Bottom 3**:\n"
+        if bottom_work:
+            periods_text += "  **Work Schedule (8am-12pm, 1pm-5pm)**:\n"
+            for period in bottom_work:
+                periods_text += f"    • {period}\n"
+        else:
+            periods_text += "  **Work Schedule (8am-12pm, 1pm-5pm)**:\n    No work hours\n"
+        
+        periods_text += "  **Call Schedule (5pm-11pm)**:\n"
+        if bottom_call:
+            for period in bottom_call:
+                periods_text += f"    • {period}\n"
+        else:
+            periods_text += "    No call hours\n"
+        
+        if bottom_other:
+            periods_text += "  **Other Hours** (outside work/call schedule):\n"
+            for period in bottom_other:
+                periods_text += f"    • {period}\n"
+        
+        periods_text += "\nConsider scheduling your most complex cases during the top periods for maximum efficiency."
+        st.info(periods_text)
+    else:
+        # Fallback to single peak if not enough data
+        peak_row = hot.loc[hot['RVU'].idxmax()]
+        peak_dow_actual = peak_row['dow']
+        peak_hour_actual = int(peak_row['hour'])
+        st.info(f"**Peak Performance Period**: {peak_dow_actual} at {peak_hour_actual}:00. Consider scheduling your most complex cases during this time for maximum efficiency.")
 elif peak_hour is not None and peak_dow is not None:
     st.info(f"**Peak Performance Period**: {peak_dow} at {peak_hour}:00. Consider scheduling your most complex cases during this time for maximum efficiency.")
 
