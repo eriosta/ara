@@ -147,12 +147,20 @@ Thumbs.db
 *.swo
 *~
 
-# Data files (optional - uncomment if you don't want to track data)
-# *.csv
-# *.xlsx
-# *.json
+# Data files
+*.csv
+*.xlsx
+*.xls
+*.json
+
+# Data directory
+data/
+*.xlsx
+*.xls
+
+# Database files
+database.xlsx
+examcode_patterns.json
 
 # Specific data files
 rvus.csv
-*.xlsx
-*.xls
