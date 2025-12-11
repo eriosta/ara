@@ -1177,7 +1177,14 @@ with st.container():
     st.altair_chart(heatmap, use_container_width=True)
     st.caption("This heatmap visualizes your RVU production across days of the week and hours of the day. Darker shades indicate higher productivity periods, helping identify optimal times to schedule complex cases.")
 
-# Schedule optimization insight
-if peak_hour is not None and peak_dow is not None:
+# Schedule optimization insight - calculate peak from heatmap data
+if not hot.empty:
+    peak_row = hot.loc[hot['RVU'].idxmax()]
+    peak_dow_actual = peak_row['dow']
+    peak_hour_actual = int(peak_row['hour'])
+    peak_rvu_value = peak_row['RVU']
+    
+    st.info(f"**Peak Performance Period**: {peak_dow_actual} at {peak_hour_actual}:00. Consider scheduling your most complex cases during this time for maximum efficiency.")
+elif peak_hour is not None and peak_dow is not None:
     st.info(f"**Peak Performance Period**: {peak_dow} at {peak_hour}:00. Consider scheduling your most complex cases during this time for maximum efficiency.")
 
