@@ -92,7 +92,7 @@ def process_dataframe(df_raw: pd.DataFrame) -> pd.DataFrame:
     # Enrichment - use EXAMCODE if available, otherwise fall back to EXAM DESC
     if "EXAMCODE" in df.columns:
         df["Modality"] = df.apply(
-            lambda row: modality_from_examcode(row.get("EXAMCODE", "")) 
+            lambda row: modality_from_examcode(row.get("EXAMCODE", ""), str(row.get("EXAM DESC", ""))) 
             if pd.notna(row.get("EXAMCODE")) else modality_from_desc(str(row.get("EXAM DESC", ""))),
             axis=1
         )
@@ -138,153 +138,187 @@ def check_time_data(df: pd.DataFrame) -> bool:
     return has_time
 
 # ======================== CLASSIFICATION FUNCTIONS ========================
-# EXAMCODE-based classification patterns (inspired by database.xlsx patterns)
-def modality_from_examcode(examcode: str) -> str:
-    """Classify modality based on EXAMCODE prefix patterns"""
+# Clean regex-based classification patterns
+
+# Modality patterns from exam codes
+MODALITY_PATTERNS = {
+    r'^XR': 'Radiography',
+    r'^AX': 'Radiography',  # Alternative X-ray notation
+    r'^RT': 'Radiography',
+    r'^CT(?!.*ANG)': 'CT',  # CT but not CTA
+    r'^CT.*ANG': 'CTA',  # CT Angiography
+    r'^MR(?!.*(?:MRA|MRV))': 'MRI',  # MR but not MRA/MRV
+    r'^MR.*MRA': 'MRA',
+    r'^MR.*MRV': 'MRV',
+    r'^FL': 'Fluoroscopy',
+    r'^NM': 'Nuclear Medicine',
+    r'^Z.*PET.*CT': 'PET/CT',
+    r'^Z.*PET': 'PET',
+    r'^Z': 'Nuclear Medicine',  # Default Z codes to NM
+}
+
+# Nuclear Medicine keywords for Z code classification
+NM_KEYWORDS = [
+    r'BONE\s+SCAN', r'HIDA', r'NUCLEAR', r'RENAL\s+SCAN', r'MAG3',
+    r'GASTRIC\s+EMPTYING', r'LIVER\s+AND\s+SPLEEN', r'HEPATOBILIARY',
+    r'THYROID', r'PARATHYROID', r'SCAN', r'INJECTION', r'RADIOACTIVE',
+    r'TECHNETIUM', r'I-131', r'I-123', r'GALLIUM', r'INDIUM',
+    r'OCTREOTIDE', r'MUGA', r'MYOCARDIAL', r'PERFUSION', r'VENTILATION',
+    r'DMSA', r'DTPA', r'LASIX', r'3\s+PHASE', r'WHOLE\s+BODY', r'SALIVARY'
+]
+
+# Head/Neck keywords for NM detection
+HEAD_NECK_KEYWORDS = [r'HEAD', r'NECK', r'THYROID', r'PARATHYROID', r'SALIVARY', r'SALIVA']
+
+def modality_from_examcode(examcode: str, exam_desc: str = "") -> str:
+    """Classify modality based on EXAMCODE prefix patterns using regex"""
     if pd.isna(examcode) or not examcode:
         return "Other"
     
     code = str(examcode).upper().strip()
     
-    # CT patterns
-    if code.startswith("CT"):
-        if "CTA" in code or "ANG" in code:
-            return "CTA"
-        return "CT"
-    
-    # MRI patterns
-    if code.startswith("MR"):
-        if "MRA" in code:
-            return "MRA"
-        if "MRV" in code:
-            return "MRV"
-        return "MRI"
-    
-    # X-ray/Radiography patterns
-    if code.startswith("XR") or code.startswith("AX"):
-        return "Radiography"
-    
-    # Radiography (RT) patterns
-    if code.startswith("RT"):
-        return "Radiography"
-    
-    # Nuclear Medicine patterns
-    if code.startswith("NM"):
-        return "Nuclear Medicine"
-    
-    # Fluoroscopy patterns
-    if code.startswith("FL"):
-        return "Fluoroscopy"
-    
-    # Procedure codes (Z codes - often PET/CT or procedures)
-    if code.startswith("Z"):
-        if "PET" in code:
-            if "CT" in code:
-                return "PET/CT"
-            return "PET"
-        return "Invasive"
+    # Try regex patterns in order (more specific first)
+    for pattern, modality in MODALITY_PATTERNS.items():
+        if re.match(pattern, code, re.IGNORECASE):
+            # Special handling for Z codes - check description for NM indicators
+            if modality == 'Nuclear Medicine' and code.startswith('Z') and exam_desc:
+                desc_upper = str(exam_desc).upper()
+                
+                # Check for NM keywords
+                if any(re.search(keyword, desc_upper, re.IGNORECASE) for keyword in NM_KEYWORDS):
+                    if not any(x in desc_upper for x in ["CT SCAN", "MRI SCAN", "MR SCAN", "US SCAN", "ULTRASOUND SCAN"]):
+                        return "Nuclear Medicine"
+                
+                # Check for head/neck NM patterns
+                if any(re.search(keyword, desc_upper, re.IGNORECASE) for keyword in HEAD_NECK_KEYWORDS):
+                    if any(x in desc_upper for x in ["PROCEDURE", "SCAN", "INJECTION", "STUDY", "IMAGING", "RADIOACTIVE"]):
+                        if not any(x in desc_upper for x in ["CT", "MRI", "MR ", "US ", "ULTRASOUND", "XR ", "X-RAY", 
+                                                              "BIOPSY", "ASPIRATION", "DRAINAGE", "CATHETER", "STENT"]):
+                            return "Nuclear Medicine"
+            
+            return modality
     
     return "Other"
 
+# Body part patterns from exam codes
+# IMPORTANT: Order matters! More specific patterns (multiple body parts) must come first
+BODY_PART_CODE_PATTERNS = {
+    r'^CT.*CH.*AB.*PE': 'Chest, Abdomen, Pelvis',  # Most specific: all three
+    r'^CT.*AB.*PE': 'Abdomen, Pelvis',  # Two body parts together
+    r'^CT.*CH': 'Chest',  # Single body part
+    r'^CT.*PE': 'Pelvis',  # Single body part (check before AB to avoid conflicts)
+    r'^CT.*AB(?!.*PE)': 'Abdomen',  # Abdomen but NOT Abdomen Pelvis (negative lookahead)
+    r'^CT.*ANG': 'Vascular',
+    r'^MR.*KN': 'Lower Extremity',  # Knee
+    r'^MR.*SH': 'Upper Extremity',  # Shoulder
+    r'^MR.*HI': 'Head/Neck',  # Head
+    r'^XR.*CH|^AX.*CH': 'Chest',
+    r'^XR.*AB|^AX.*AB': 'Abdomen',
+    r'^RT.*CH': 'Chest',
+    r'^RT.*(?:HI|HA)': 'Upper Extremity',  # Hand
+    r'^RT.*SH': 'Upper Extremity',  # Shoulder
+    r'^RT.*EL': 'Upper Extremity',  # Elbow
+    r'^RT.*KN': 'Lower Extremity',  # Knee
+    r'^RT.*(?:FO|AN)': 'Lower Extremity',  # Foot/Ankle
+    r'^RT.*FE': 'Lower Extremity',  # Femur
+    r'^RT.*TI': 'Lower Extremity',  # Tibia
+    r'^RT.*PE': 'Pelvis',
+    r'^RT.*CL': 'Upper Extremity',  # Clavicle
+    r'^RT.*LS': 'Spine',  # Lumbar spine
+    r'^NM.*HIDA|^NM.*HEPATOBILIARY': 'Liver',
+    r'^NM.*(?:KID|RENAL|MAG3)': 'Renal',
+    r'^NM.*(?:LUNG|VEN|PERF)': 'Chest',
+    r'^NM.*(?:BONE|BJTOT)': 'Whole Body',
+    r'^NM.*(?:GES|GASTRIC)': 'Stomach',
+}
+
 def body_part_from_examcode(examcode: str, exam_desc: str = "") -> str:
-    """Extract body part from EXAMCODE patterns"""
+    """Extract body part from EXAMCODE patterns using regex"""
     if pd.isna(examcode) or not examcode:
         return body_parts_from_desc(exam_desc) if exam_desc else "Unknown"
     
     code = str(examcode).upper().strip()
     desc = str(exam_desc).upper() if exam_desc else ""
     
-    # CT patterns
-    if code.startswith("CT"):
-        if "CH" in code and ("AB" in code or "PE" in code):
-            if "CH" in code and "AB" in code and "PE" in code:
-                return "Chest, Abdomen, Pelvis"
-            elif "AB" in code and "PE" in code:
-                return "Abdomen, Pelvis"
-            elif "CH" in code:
-                return "Chest"
-        elif "AB" in code:
-            return "Abdomen"
-        elif "PE" in code:
-            return "Pelvis"
-        elif "CH" in code:
-            return "Chest"
-        elif "ANG" in code:
-            return "Vascular"
+    # For CT studies: ALWAYS check description first for multi-body-part combinations
+    # This ensures "CT Abdomen Pelvis" is detected even if code is just "CTABC"
+    if code.startswith('CT') and exam_desc:
+        region = region_ct(desc)
+        if region == "Chest/Abdomen/Pelvis":
+            return "Chest, Abdomen, Pelvis"
+        elif region == "Abdomen/Pelvis":
+            return "Abdomen, Pelvis"
     
-    # MRI patterns
-    if code.startswith("MR"):
-        if "KN" in code:
-            return "Lower Extremity"  # Knee
-        elif "SH" in code:
-            return "Upper Extremity"  # Shoulder
-        elif "HI" in code:
-            return "Head/Neck"  # Head
+    # Try regex patterns in order (more specific first)
+    # Convert to list to ensure order is preserved
+    for pattern, body_part in list(BODY_PART_CODE_PATTERNS.items()):
+        if re.match(pattern, code, re.IGNORECASE):
+            # For CT studies, double-check description for combinations
+            if code.startswith('CT') and exam_desc:
+                region = region_ct(desc)
+                if region == "Chest/Abdomen/Pelvis":
+                    return "Chest, Abdomen, Pelvis"
+                elif region == "Abdomen/Pelvis":
+                    return "Abdomen, Pelvis"
+            return body_part
     
-    # X-ray patterns
-    if code.startswith("XR") or code.startswith("AX"):
-        if "CH" in code:
-            return "Chest"
-        elif "AB" in code:
-            return "Abdomen"
-    
-    # RT (Radiography) patterns
-    if code.startswith("RT"):
-        if "CH" in code:
-            return "Chest"
-        elif "HI" in code or "HA" in code:
-            return "Upper Extremity"  # Hand
-        elif "SH" in code:
-            return "Upper Extremity"  # Shoulder
-        elif "EL" in code:
-            return "Upper Extremity"  # Elbow
-        elif "KN" in code:
-            return "Lower Extremity"  # Knee
-        elif "FO" in code or "AN" in code:
-            return "Lower Extremity"  # Foot/Ankle
-        elif "FE" in code:
-            return "Lower Extremity"  # Femur
-        elif "TI" in code:
-            return "Lower Extremity"  # Tibia
-        elif "PE" in code:
-            return "Pelvis"
-        elif "CL" in code:
-            return "Upper Extremity"  # Clavicle
-        elif "LS" in code:
-            return "Spine"  # Lumbar spine
-        elif "PR" in code or "PO" in code:
-            return "Lower Extremity"  # Proximal/Posterior
-    
-    # Nuclear Medicine patterns
-    if code.startswith("NM"):
-        if "HIDA" in code or "HEPATOBILIARY" in desc:
-            return "Liver"
-        elif "KID" in code or "RENAL" in code or "MAG3" in code:
-            return "Renal"
-        elif "LUNG" in code or "VEN" in code or "PERF" in code:
-            return "Chest"
-        elif "BONE" in desc or "BJTOT" in code:
-            return "Whole Body"
-        elif "GES" in code or "GASTRIC" in desc:
-            return "Stomach"
+    # Z code body part detection from description
+    if code.startswith('Z') and exam_desc:
+        desc_upper = str(exam_desc).upper()
+        z_body_patterns = [
+            (r'BONE\s+SCAN|3\s+PHASE\s+BONE', 'Whole Body'),
+            (r'HIDA|HEPATOBILIARY', 'Liver'),
+            (r'RENAL|MAG3', 'Renal'),
+            (r'GASTRIC', 'Stomach'),
+        ]
+        for pattern, body_part in z_body_patterns:
+            if re.search(pattern, desc_upper, re.IGNORECASE):
+                return body_part
     
     # Fallback to description parsing
     return body_parts_from_desc(exam_desc) if exam_desc else "Unknown"
 
+def is_angiography_or_venogram(modality: str, exam_desc: str) -> bool:
+    """
+    Determine if study is an angiography or venogram that should retain contrast info.
+    These are studies where contrast is clinically essential to the exam definition.
+    """
+    # Check modality first
+    if modality in ["CTA", "MRA", "MRV", "CTV"]:
+        return True
+    
+    # Check description for angiography/venogram keywords
+    desc_upper = str(exam_desc).upper()
+    angio_keywords = [
+        "ANGIOGRAPHY", "ANGIOGRAM", 
+        "VENOGRAPHY", "VENOGRAM",
+        "ARTERIOGRAPHY", "ARTERIOGRAM"
+    ]
+    
+    return any(keyword in desc_upper for keyword in angio_keywords)
+
 def exam_from_examcode(examcode: str, exam_desc: str = "") -> str:
-    """Create exam name from EXAMCODE"""
+    """
+    Create exam name from EXAMCODE.
+    
+    NEW LOGIC: Only include contrast for angiography/venogram studies.
+    """
     if pd.isna(examcode) or not examcode:
         return exam_from_desc(exam_desc) if exam_desc else "Other"
     
-    modality = modality_from_examcode(examcode)
+    modality = modality_from_examcode(examcode, exam_desc)
     body_part = body_part_from_examcode(examcode, exam_desc)
     
+    # Check if this is an angiography/venogram
+    is_angio = is_angiography_or_venogram(modality, exam_desc)
+    
     # Get contrast info from description if available
-    if exam_desc:
+    if is_angio and exam_desc:
         con = contrast_phrase(str(exam_desc).upper())
         if con:
             return f"{modality} {body_part} {con}"
     
+    # For non-angio studies, never include contrast
     return f"{modality} {body_part}"
 
 BODY_PART_PATTERNS = {
@@ -305,62 +339,63 @@ BODY_PART_PATTERNS = {
     "Whole Body": r"\bWHOLE BODY|BONE SCAN|TUMOR IMAGING|SKULL BASE.*MID THIGH|SKULL BASE.*THIGH\b",
 }
 
+# Description-based modality patterns (order matters - more specific first)
+DESC_MODALITY_PATTERNS = [
+    (r'\bPET\s*/\s*CT|PET\s+CT', 'PET/CT'),
+    (r'\bPET\b|POSITRON', 'PET'),
+    (r'\bMRA\b|ANGIOGRAPHY|ANGIOGRAM', 'MRA'),  # Check before MRI
+    (r'\bMRV\b|VENOGRAPHY|VENOGRAM', 'MRV'),  # Check before MRI
+    (r'\bMRI\b|MR\s+', 'MRI'),
+    (r'\bCTA\b|CT\s+ANGIOGRAPHY|CT\s+ANGIOGRAM', 'CTA'),  # Check before CT
+    (r'\bCTV\b|CT\s+VENOGRAPHY|CT\s+VENOGRAM', 'CTV'),  # Check before CT
+    (r'\bCT\b', 'CT'),
+    (r'\bNM\s+|NUCLEAR\s+MEDICINE', 'Nuclear Medicine'),
+    (r'\bUS\s+|ULTRASOUND', 'US'),
+    (r'\bXR\s+|X-RAY', 'Radiography'),
+    (r'\bFL\s+|FLUORO', 'Fluoroscopy'),
+    (r'\bMAMMO|BREAST', 'Mammography'),
+    (r'\bECHO\b', 'Echocardiography'),
+]
+
 def modality_from_desc(s: str) -> str:
+    """Classify modality from description using regex patterns"""
     t = s.upper()
     
-    # MRI variations
-    if any(x in t for x in ["MRI", "MR "]):
-        if "MRA" in t: return "MRA"
-        if "MRV" in t: return "MRV"
-        return "MRI"
+    # Try regex patterns in order (more specific first)
+    for pattern, modality in DESC_MODALITY_PATTERNS:
+        if re.search(pattern, t, re.IGNORECASE):
+            return modality
     
-    # CT variations
-    if "CT" in t:
-        if "CTA" in t: return "CTA"
-        return "CT"
-    
-    # Ultrasound variations
-    if any(x in t for x in ["US ", "ULTRASOUND", "DUPLEX", "DUP "]):
-        if "DUPLEX" in t or "DUP " in t: return "US - Duplex"
-        if "OBSTETRICAL" in t or "PREGNANCY" in t: return "US - Obstetrical"
-        if "PROCEDURE" in t: return "US Procedure"
-        return "US"
-    
-    # X-ray variations
-    if any(x in t for x in ["XR ", "X-RAY", "CHEST", "ABDOMEN", "KNEE", "HAND", "FOOT", "SHOULDER", "ELBOW", "ANKLE", "WRIST", "HIP", "FEMUR", "TIBIA", "HUMERUS", "FINGER", "TOE", "SPINE", "PELVIS", "CLAVICLE", "RIBS", "SINUS", "TEMPORAL", "FACIAL", "ORBITS", "SKULL", "SACRUM", "COCCYX"]):
-        return "Radiography"
-    
-    # Fluoroscopy variations
-    if any(x in t for x in ["FL ", "FLUORO", "BARIUM", "LUMBAR PUNCTURE", "SP "]):
-        if "DYNAMIC" in t: return "Fluoroscopy - Dynamic"
-        if "GUIDANCE" in t: return "Fluoroscopy Guidance"
-        return "Fluoroscopy"
-    
-    # Mammography variations
-    if any(x in t for x in ["MAMMO", "BREAST"]):
-        if "PROCEDURE" in t or "BIOPSY" in t: return "Mammography Procedure"
-        return "Mammography"
-    
-    # Echocardiography
-    if "ECHO" in t: return "Echocardiography"
-    
-    # PET variations (check before CT to catch PET/CT)
-    if any(x in t for x in ["PET", "POSITRON"]):
-        if "PET/CT" in t or "PET CT" in t: return "PET/CT"
-        return "PET"
-    
-    # Nuclear Medicine variations (check for specific NM patterns)
-    if any(x in t for x in ["NM ", "NUCLEAR MEDICINE"]):
-        return "Nuclear Medicine"
-    # Check for specific nuclear medicine exam types
-    if any(x in t for x in ["HIDA", "BONE SCAN", "RENAL SCAN", "LUNG VENT", "PERF SCAN", "GASTRIC EMPTYING", "MAG3", "LASIX", "HEPATOBILIARY DUCTAL", "LIVER AND SPLEEN IMAGING"]):
-        # Exclude if already matched as other modalities (e.g., CT SCAN, MRI SCAN)
-        if not any(x in t for x in ["CT", "MRI", "MR ", "US ", "ULTRASOUND", "XR ", "X-RAY"]):
+    # Nuclear Medicine detection (priority over Invasive)
+    # Check for NM keywords
+    if any(re.search(keyword, t, re.IGNORECASE) for keyword in NM_KEYWORDS):
+        # Exclude if already matched as other modalities
+        if not re.search(r'\b(?:CT|MRI|MR\s+|US\s+|ULTRASOUND|XR\s+|X-RAY)\s+SCAN', t, re.IGNORECASE):
             return "Nuclear Medicine"
     
-    # Invasive procedures
-    if any(x in t for x in ["INVASIVE", "BIOPSY", "PROCEDURE"]):
-        return "Invasive"
+    # NM pattern: INJECTION/RADIOACTIVE + SCAN/PROCEDURE
+    if (re.search(r'INJECTION|RADIOACTIVE|RADIONUCLIDE', t, re.IGNORECASE) and
+        re.search(r'SCAN|PROCEDURE|STUDY|IMAGING', t, re.IGNORECASE)):
+        if not re.search(r'\b(?:CT|MRI|MR\s+|US\s+|ULTRASOUND|XR\s+|X-RAY|BIOPSY|ASPIRATION|DRAINAGE)\b', t, re.IGNORECASE):
+            return "Nuclear Medicine"
+    
+    # Head/Neck NM detection
+    if any(re.search(keyword, t, re.IGNORECASE) for keyword in HEAD_NECK_KEYWORDS):
+        if re.search(r'PROCEDURE|SCAN|INJECTION|STUDY|IMAGING|RADIOACTIVE', t, re.IGNORECASE):
+            if not re.search(r'\b(?:CT|MRI|MR\s+|US\s+|ULTRASOUND|XR\s+|X-RAY|BIOPSY|ASPIRATION|DRAINAGE|CATHETER|STENT)\b', t, re.IGNORECASE):
+                return "Nuclear Medicine"
+    
+    # Fallback: X-ray detection for common body parts
+    if re.search(r'\b(?:CHEST|ABDOMEN|KNEE|HAND|FOOT|SHOULDER|ELBOW|ANKLE|WRIST|HIP|FEMUR|TIBIA|HUMERUS|FINGER|TOE|SPINE|PELVIS|CLAVICLE|RIBS|SINUS|TEMPORAL|FACIAL|ORBITS|SKULL|SACRUM|COCCYX)\b', t, re.IGNORECASE):
+        return "Radiography"
+    
+    # Invasive procedures (last resort, very specific)
+    invasive_patterns = [r'BIOPSY', r'ASPIRATION', r'DRAINAGE', r'CATHETERIZATION', r'STENT\s+PLACEMENT']
+    nm_indicators = [r'SCAN', r'INJECTION', r'RADIOACTIVE', r'RADIONUCLIDE', r'NUCLEAR']
+    
+    if any(re.search(pattern, t, re.IGNORECASE) for pattern in invasive_patterns):
+        if not any(re.search(indicator, t, re.IGNORECASE) for indicator in nm_indicators):
+            return "Invasive"
     
     return "Other"
 
@@ -380,6 +415,11 @@ def region_ct(t: str) -> str:
     return "Other"
 
 def exam_from_desc(s: str) -> str:
+    """
+    Create exam name from description.
+    
+    NEW LOGIC: Only include contrast for angiography/venogram studies.
+    """
     t = re.sub(r"\s+", " ", s.upper()).strip()
     mod = modality_from_desc(t)
     
@@ -388,35 +428,43 @@ def exam_from_desc(s: str) -> str:
     if body_part == "Unknown":
         body_part = "Other"
     
-    # Get contrast info
-    con = contrast_phrase(t)
+    # Check if this is an angiography/venogram
+    is_angio = is_angiography_or_venogram(mod, s)
     
-    # Format based on modality
-    if mod in ["CT", "CTA"]:
-        return f"{mod} {body_part}" + (f" {con}" if con else "")
-    elif mod in ["MRI", "MRA", "MRV"]:
-        return f"{mod} {body_part}" + (f" {con}" if con else "")
-    elif mod == "Radiography":
-        return f"XR {body_part}"
-    elif mod in ["US", "US - Duplex", "US - Obstetrical", "US Procedure"]:
-        return f"{mod} {body_part}"
-    elif mod in ["Fluoroscopy", "Fluoroscopy - Dynamic", "Fluoroscopy Guidance"]:
-        return f"{mod} {body_part}"
-    elif mod in ["Mammography", "Mammography Procedure"]:
-        return f"{mod} {body_part}"
-    elif mod == "Echocardiography":
-        return f"{mod} {body_part}"
-    elif mod in ["PET", "PET/CT"]:
-        return f"{mod} {body_part}" + (f" {con}" if con else "")
-    elif mod == "Nuclear Medicine":
-        return f"{mod} {body_part}"
-    elif mod == "Invasive":
-        return f"{mod} {body_part}"
+    # Get contrast info
+    con = contrast_phrase(t) if is_angio else ""
+    
+    # Format the exam name
+    if mod == "Radiography":
+        return f"Radiography {body_part}"
     else:
-        return f"{mod} {body_part}"
+        # Only add contrast if it's angiography/venogram
+        return f"{mod} {body_part}" + (f" {con}" if con else "")
 
 def body_parts_from_desc(s: str) -> str:
     t = s.upper()
+    
+    # FIRST: Check for multi-body-part combinations (most specific first)
+    # This must come before individual body part detection
+    # Use region_ct for CT scans to catch all variations
+    if "CT" in t:
+        region = region_ct(t)
+        if region == "Chest/Abdomen/Pelvis":
+            return "Chest, Abdomen, Pelvis"
+        elif region == "Abdomen/Pelvis":
+            return "Abdomen, Pelvis"
+    
+    # Also check for other modalities with multi-body-part combinations
+    if re.search(r'\b(?:CHEST|CH)\b.*\b(?:ABDOMEN|AB)\b.*\b(?:PELVIS|PE)\b', t, re.IGNORECASE) or \
+       re.search(r'\b(?:ABDOMEN|AB)\b.*\b(?:PELVIS|PE)\b.*\b(?:CHEST|CH)\b', t, re.IGNORECASE) or \
+       re.search(r'\b(?:PELVIS|PE)\b.*\b(?:CHEST|CH)\b.*\b(?:ABDOMEN|AB)\b', t, re.IGNORECASE):
+        return "Chest, Abdomen, Pelvis"
+    
+    if re.search(r'\b(?:ABDOMEN|ABDOMINAL|AB)\b.*\b(?:PELVIS|PELVIC|PE)\b', t, re.IGNORECASE) or \
+       re.search(r'\b(?:PELVIS|PELVIC|PE)\b.*\b(?:ABDOMEN|ABDOMINAL|AB)\b', t, re.IGNORECASE):
+        return "Abdomen, Pelvis"
+    
+    # Now check for individual body parts
     found = [name for name, pat in BODY_PART_PATTERNS.items() if re.search(pat, t)]
     
     # Special handling for Nuclear Medicine exams
@@ -443,20 +491,28 @@ def body_parts_from_desc(s: str) -> str:
         found = ["Whole Body"]
     
     # Fallback for CT scans: use region detection
-    if not found and "CT" in t:
+    # This should catch "CT Abdomen Pelvis" even if individual patterns matched first
+    if "CT" in t:
         region = region_ct(t)
         if region != "Other":
             # Map region_ct results to body part names
             if region == "Chest/Abdomen/Pelvis":
-                found = ["Chest", "Abdomen", "Pelvis"]
+                # Override any previous findings with the correct combination
+                return "Chest, Abdomen, Pelvis"
             elif region == "Abdomen/Pelvis":
-                found = ["Abdomen", "Pelvis"]
+                # Override any previous findings with the correct combination
+                return "Abdomen, Pelvis"
             elif region == "Chest":
-                found = ["Chest"]
+                if not found or "Chest" not in [f for f in found]:
+                    found = ["Chest"]
             elif region == "Abdomen":
-                found = ["Abdomen"]
+                # Only use if we haven't already found Abdomen, Pelvis combination
+                if not any("Pelvis" in f or "Abdomen, Pelvis" in f for f in found):
+                    found = ["Abdomen"]
             elif region == "Pelvis":
-                found = ["Pelvis"]
+                # Only use if we haven't already found Abdomen, Pelvis combination
+                if not any("Abdomen" in f or "Abdomen, Pelvis" in f for f in found):
+                    found = ["Pelvis"]
     
     # Fallback: if still nothing found, check for common terms
     if not found:
@@ -1159,6 +1215,91 @@ with col2:
     
     st.altair_chart(pie_chart, use_container_width=True)
     st.caption("This pie chart shows the distribution of total RVUs across different imaging modalities, revealing which types of studies contribute most to your productivity.")
+
+# ======================== STUDY SUMMARY TABLE ========================
+st.divider()
+st.subheader("Study Summary Table")
+
+# Calculate total RVU and total cases for percentage calculations
+total_rvu_all = df["WRVU ESTIMATE"].sum()
+total_cases_all = len(df)
+
+# Group by Exam (regex'd study names) and calculate summary metrics
+summary = df.groupby("Exam").agg({
+    "WRVU ESTIMATE": [
+        ("Total_RVU", "sum"),
+        ("Avg_RVU", "mean"),
+        ("Count", "count")
+    ]
+}).reset_index()
+
+# Flatten column names
+summary.columns = ["Exam", "Total_RVU", "Avg_RVU", "Count"]
+
+# Calculate percentages
+summary["%_of_Total_RVU"] = (summary["Total_RVU"] / total_rvu_all * 100) if total_rvu_all > 0 else 0
+summary["%_of_Total_Cases"] = (summary["Count"] / total_cases_all * 100) if total_cases_all > 0 else 0
+
+# Identify unknown/uncategorized studies (those with "Other" or "Unknown" in Exam field)
+unknown_mask = summary["Exam"].str.contains("Other|Unknown", case=False, na=False)
+unknown_studies = summary[unknown_mask].copy()
+known_studies = summary[~unknown_mask].copy()
+
+# Sort known studies by Total RVU descending
+known_studies = known_studies.sort_values("Total_RVU", ascending=False).reset_index(drop=True)
+
+# Aggregate unknown/uncategorized studies into a single row
+if not unknown_studies.empty:
+    unknown_row = pd.DataFrame({
+        "Exam": ["Unknown/Uncategorized Studies"],
+        "Total_RVU": [unknown_studies["Total_RVU"].sum()],
+        "Avg_RVU": [unknown_studies["Total_RVU"].sum() / unknown_studies["Count"].sum() if unknown_studies["Count"].sum() > 0 else 0],
+        "Count": [unknown_studies["Count"].sum()],
+        "%_of_Total_RVU": [(unknown_studies["Total_RVU"].sum() / total_rvu_all * 100) if total_rvu_all > 0 else 0],
+        "%_of_Total_Cases": [(unknown_studies["Count"].sum() / total_cases_all * 100) if total_cases_all > 0 else 0]
+    })
+    
+    # Combine known studies with unknown row at the end
+    summary_display = pd.concat([known_studies, unknown_row], ignore_index=True)
+else:
+    summary_display = known_studies.copy()
+
+# Format the summary table for display
+summary_display["Total_RVU"] = summary_display["Total_RVU"].round(2)
+summary_display["Avg_RVU"] = summary_display["Avg_RVU"].round(2)
+summary_display["%_of_Total_RVU"] = summary_display["%_of_Total_RVU"].round(1)
+summary_display["%_of_Total_Cases"] = summary_display["%_of_Total_Cases"].round(1)
+
+# Rename columns for better display
+summary_display = summary_display.rename(columns={
+    "Exam": "Study Type",
+    "Count": "Total Count",
+    "Total_RVU": "Total RVU",
+    "Avg_RVU": "Avg RVU",
+    "%_of_Total_RVU": "% of Total RVU",
+    "%_of_Total_Cases": "% of Total Cases"
+})
+
+# Display the summary table
+st.dataframe(
+    summary_display[["Study Type", "Total Count", "Total RVU", "Avg RVU", "% of Total RVU", "% of Total Cases"]],
+    use_container_width=True,
+    hide_index=True,
+    height=400
+)
+
+# Display summary statistics
+col1, col2, col3 = st.columns(3)
+with col1:
+    # Count unique study types: known studies + 1 for unknown/uncategorized (if any)
+    unique_count = len(known_studies) + (1 if not unknown_studies.empty else 0)
+    st.metric("Unique Study Types", unique_count)
+with col2:
+    st.metric("Total Studies", f"{total_cases_all:,}")
+with col3:
+    st.metric("Total RVU", f"{total_rvu_all:.1f}")
+
+st.caption("This table summarizes all unique study types (regex'd from exam descriptions) with comprehensive metrics including counts, RVU statistics, and percentage contributions to overall productivity.")
 
 # ======================== SCHEDULE OPTIMIZATION ========================
 st.subheader("Schedule Optimization")
