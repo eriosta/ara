@@ -1,113 +1,242 @@
-# Resident RVU Dashboard
+# RVU Dashboard
 
-A Streamlit application for analyzing radiology resident productivity using Work RVUs (wRVUs) with actionable insights for performance benchmarking and efficiency optimization.
+A modern, full-stack web application for radiology residents to track their productivity using Work RVUs (wRVUs) with actionable insights, beautiful analytics, and PDF export capabilities.
 
-## Features
+![RVU Dashboard](https://img.shields.io/badge/React-18-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Tailwind](https://img.shields.io/badge/Tailwind-3-blue) ![Supabase](https://img.shields.io/badge/Supabase-Auth%20%26%20DB-green)
 
-- **Performance Overview**: Key metrics including daily RVUs, RVUs per hour, cases per day, and RVUs per case
-- **Daily Performance Trend**: Interactive charts showing daily RVU performance with 7-day moving average
-- **Hourly Efficiency Analysis**: Bar chart showing RVU efficiency by hour of day
-- **Case Mix Analysis**: Top 5 modality-body part combinations with pie chart breakdown
-- **Schedule Optimization**: Heatmap showing optimal work schedule patterns
+## ✨ Features
 
-## Data Requirements
+- **🔐 User Authentication**: Secure login/signup with Supabase Auth
+- **📊 Performance Analytics**: Daily RVUs, trends, efficiency metrics, and goal tracking
+- **📈 Interactive Charts**: Beautiful visualizations with Recharts
+  - Daily performance trend with 7-day moving average
+  - Hourly efficiency analysis
+  - Case mix breakdown by modality and body part
+  - Schedule optimization heatmap
+- **📁 Data Management**: Upload CSV/Excel files or paste data directly
+- **📄 PDF Export**: Generate professional reports with insights
+- **🎨 Modern UI**: Dark theme with glass morphism, smooth animations
 
-The app expects CSV files with the following columns:
-- `DICTATION DTTM`: Study interpretation date/time
-- `EXAM DESC`: Radiology exam description
-- `WRVU ESTIMATE`: Work RVU value
+## 🛠️ Tech Stack
 
-⚠️ **Security Notice**: Do not include PHI or patient identifiers in your data.
+- **Frontend**: React 18, TypeScript, Tailwind CSS
+- **State Management**: Zustand
+- **Charts**: Recharts
+- **Backend/Auth**: Supabase (PostgreSQL + Row Level Security)
+- **PDF Generation**: jsPDF + jspdf-autotable
+- **File Parsing**: PapaParse, xlsx
+- **Deployment**: Netlify
 
-## Local Development
+## 📋 Data Requirements
 
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd ara
-   ```
+Upload files with these columns (column names are flexible):
+- `DICTATION DTTM` - Date/time of study interpretation
+- `EXAM DESC` - Radiology exam description
+- `WRVU ESTIMATE` - Work RVU value
 
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+⚠️ **Security Notice**: Do NOT include PHI or patient identifiers.
 
-3. **Run the app locally**:
-   ```bash
-   streamlit run app.py
-   ```
+## 🚀 Getting Started
 
-4. **Open your browser** to `http://localhost:8501`
+### Prerequisites
 
-## Deployment Options
+- Node.js 18+ 
+- npm or yarn
+- Supabase account (free tier works)
 
-### Streamlit Community Cloud (Recommended)
+### 1. Clone & Install
 
-1. **Push to GitHub**:
-   ```bash
-   git add .
-   git commit -m "Initial commit"
-   git push origin main
-   ```
+```bash
+git clone <repository-url>
+cd ara
+npm install
+```
 
-2. **Deploy on Streamlit Cloud**:
-   - Go to [share.streamlit.io](https://share.streamlit.io)
-   - Sign in with your GitHub account
-   - Click "New app"
-   - Select your repository and branch
-   - Set the main file path to `app.py`
-   - Click "Deploy"
+### 2. Set Up Supabase
 
-### Other Deployment Platforms
+1. Create a new project at [supabase.com](https://supabase.com)
+2. Go to SQL Editor and run the following schema:
 
-#### Heroku
-1. Create a `Procfile`:
-   ```
-   web: streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
-   ```
+```sql
+-- Create profiles table
+CREATE TABLE profiles (
+  id UUID REFERENCES auth.users(id) PRIMARY KEY,
+  email TEXT NOT NULL,
+  full_name TEXT,
+  goal_rvu_per_day NUMERIC DEFAULT 15,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
 
-2. Deploy using Heroku CLI or GitHub integration
+-- Create RVU records table
+CREATE TABLE rvu_records (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  dictation_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
+  exam_description TEXT NOT NULL,
+  wrvu_estimate NUMERIC NOT NULL,
+  modality TEXT,
+  exam_type TEXT,
+  body_part TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
 
-#### Docker
-1. Create a `Dockerfile`:
-   ```dockerfile
-   FROM python:3.9-slim
-   WORKDIR /app
-   COPY requirements.txt .
-   RUN pip install -r requirements.txt
-   COPY . .
-   EXPOSE 8501
-   CMD ["streamlit", "run", "app.py", "--server.address", "0.0.0.0"]
-   ```
+-- Enable RLS
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rvu_records ENABLE ROW LEVEL SECURITY;
 
-2. Build and run:
-   ```bash
-   docker build -t rvu-dashboard .
-   docker run -p 8501:8501 rvu-dashboard
-   ```
+-- Policies for profiles
+CREATE POLICY "Users can view own profile" ON profiles
+  FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
-## Configuration
+-- Policies for rvu_records
+CREATE POLICY "Users can view own records" ON rvu_records
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own records" ON rvu_records
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own records" ON rvu_records
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own records" ON rvu_records
+  FOR DELETE USING (auth.uid() = user_id);
 
-The app uses `.streamlit/config.toml` for configuration:
-- Theme colors match the medical/analytics aesthetic
-- Headless mode enabled for deployment
-- CORS and XSRF protection configured for web deployment
+-- Create function to handle new user signup
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, full_name)
+  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'full_name');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-## Usage
+-- Create trigger for new user signup
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+```
 
-1. **Upload Data**: Use the sidebar to upload a CSV file or paste data
-2. **Set Goals**: Configure your daily RVU target (default: 15 for residents)
-3. **Analyze**: View performance metrics and insights
-4. **Explore**: Use interactive charts to understand patterns
+3. Get your Supabase URL and anon key from Settings > API
 
-## Methods
+### 3. Configure Environment
 
-- **Data Processing**: Modality and body part extraction from exam descriptions
-- **Derivations**: Daily/weekly aggregates and trend calculations
-- **KPIs**: RVUs/day, RVUs/case, 7-day moving average, trend slope
+Create a `.env` file:
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+### 4. Run Development Server
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173)
+
+## 🌐 Deploy to Netlify
+
+### Option 1: Netlify CLI
+
+```bash
+npm install -g netlify-cli
+netlify login
+netlify init
+netlify deploy --prod
+```
+
+### Option 2: Git Integration
+
+1. Push to GitHub
+2. Connect repository in Netlify
+3. Configure build settings:
+   - Build command: `npm run build`
+   - Publish directory: `dist`
+4. Add environment variables in Netlify dashboard
+5. Deploy!
+
+## 📊 Dashboard Features
+
+### Performance Overview
+- Daily RVUs vs target
+- RVUs per hour efficiency
+- Cases per day volume
+- RVUs per case complexity
+- Target hit rate percentage
+- 7-day moving average
+- Trend analysis
+
+### Charts & Visualizations
+- **Daily Trend**: Line chart with target line and moving average
+- **Hourly Efficiency**: Bar chart showing productivity by hour
+- **Case Mix**: Top 5 modality-body part combinations
+- **Modality Distribution**: Pie chart of RVUs by modality
+- **Schedule Heatmap**: Day/hour productivity patterns
+
+### PDF Report
+Exports a comprehensive report including:
+- Performance metrics and status
+- Summary statistics
+- Case mix breakdown
+- Modality distribution
+- Schedule optimization recommendations
+- Recent daily performance
+
+## 🔧 Project Structure
+
+```
+ara/
+├── public/
+│   └── vite.svg
+├── src/
+│   ├── components/
+│   │   ├── charts/
+│   │   │   ├── CaseMixChart.tsx
+│   │   │   ├── DailyTrendChart.tsx
+│   │   │   ├── HeatmapChart.tsx
+│   │   │   ├── HourlyEfficiencyChart.tsx
+│   │   │   └── ModalityPieChart.tsx
+│   │   ├── EmptyState.tsx
+│   │   ├── FileUpload.tsx
+│   │   ├── LoadingScreen.tsx
+│   │   ├── MetricsOverview.tsx
+│   │   └── Sidebar.tsx
+│   ├── lib/
+│   │   ├── dataProcessing.ts
+│   │   ├── pdfExport.ts
+│   │   └── supabase.ts
+│   ├── pages/
+│   │   ├── AuthPage.tsx
+│   │   └── Dashboard.tsx
+│   ├── stores/
+│   │   ├── authStore.ts
+│   │   └── dataStore.ts
+│   ├── App.tsx
+│   ├── index.css
+│   ├── main.tsx
+│   └── vite-env.d.ts
+├── .gitignore
+├── index.html
+├── netlify.toml
+├── package.json
+├── postcss.config.js
+├── tailwind.config.js
+├── tsconfig.json
+└── vite.config.ts
+```
+
+## 📝 Methods
+
+- **Data Processing**: Automatic modality and body part extraction from exam descriptions
+- **Derivations**: Daily/weekly aggregates, trend calculations, moving averages
+- **KPIs**: RVUs/day, RVUs/case, target hit rate, efficiency metrics
 - **Assumption**: 8-hour workday for RVUs/hour calculations
 
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -115,10 +244,14 @@ The app uses `.streamlit/config.toml` for configuration:
 4. Test locally
 5. Submit a pull request
 
-## License
+## 📄 License
 
 This project is open source and available under the MIT License.
 
-## Support
+## 🙋 Support
 
 For issues or questions, please open an issue on GitHub.
+
+---
+
+Built with ❤️ for radiology residents
