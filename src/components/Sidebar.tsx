@@ -132,8 +132,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   }
 
   const handleExportCSV = async () => {
-    if (!user || records.length === 0) {
-      toast.error('No data to export')
+    if (!user) {
+      toast.error('Please sign in to export data')
       return
     }
 
@@ -143,9 +143,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     const csvContent = await exportCSVFromDB(user.id)
     
     if (!csvContent) {
-      toast.error('Failed to export data', { id: 'export' })
+      toast.error('No data found to export', { id: 'export' })
       return
     }
+
+    // Count records (lines minus header)
+    const recordCount = csvContent.split('\n').length - 1
 
     // Create and download file
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -153,13 +156,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     const link = document.createElement('a')
     link.href = url
     const dateStr = new Date().toISOString().split('T')[0]
-    link.download = `rvu_data_${dateStr}.csv`
+    link.download = `myRVU_Export_${dateStr}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
     
-    toast.success(`Exported ${records.length.toLocaleString()} records to CSV`, { id: 'export' })
+    toast.success(`Exported ${recordCount.toLocaleString()} records to CSV`, { id: 'export' })
   }
 
   return (
@@ -404,7 +407,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             {/* Export CSV */}
             <button
               onClick={handleExportCSV}
-              disabled={records.length === 0 || loading}
+              disabled={loading}
               className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
             >
               <Download className="w-5 h-5" style={{ color: 'var(--info)' }} />
