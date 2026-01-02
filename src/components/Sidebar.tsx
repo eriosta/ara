@@ -249,8 +249,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </div>
             )}
 
-            {/* Saved Data / Upload History */}
-            {uploadHistory.length > 0 && (
+            {/* Saved Data / Upload History - only show when there are actual records */}
+            {records.length > 0 && uploadHistory.length > 0 && (
               <div className="mt-2 p-3 rounded-xl bg-dark-800/80 border border-dark-700/50">
                 <div className="flex items-center gap-2 mb-3">
                   <Database className="w-4 h-4 text-primary-400" />

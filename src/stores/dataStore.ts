@@ -94,8 +94,29 @@ export const useDataStore = create<DataState>((set, get) => ({
   clearRecords: async (userId: string) => {
     set({ loading: true })
     try {
+      // Delete all RVU records
       const { error } = await supabase
         .from('rvu_records')
+        .delete()
+        .eq('user_id', userId)
+
+      // Get all upload history to delete files from storage
+      const { data: uploads } = await supabase
+        .from('upload_history')
+        .select('file_path')
+        .eq('user_id', userId)
+
+      // Delete files from storage
+      if (uploads && uploads.length > 0) {
+        const filePaths = uploads.map(u => u.file_path).filter(Boolean)
+        if (filePaths.length > 0) {
+          await supabase.storage.from('uploads').remove(filePaths)
+        }
+      }
+
+      // Delete upload history records
+      await supabase
+        .from('upload_history')
         .delete()
         .eq('user_id', userId)
 
