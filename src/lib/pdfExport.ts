@@ -176,19 +176,16 @@ export function generatePDF(options: PDFExportOptions): void {
     { 
       label: 'Target Hit Rate', 
       value: `${metrics.targetHitRate.toFixed(0)}%`, 
-      icon: metrics.targetHitRate >= 50 ? '●' : '○',
       color: metrics.targetHitRate >= 70 ? emerald : metrics.targetHitRate >= 50 ? amber : red
     },
     { 
       label: '7-Day Moving Avg', 
       value: metrics.ma7.toFixed(1), 
-      icon: '◆',
       color: emerald
     },
     { 
       label: 'Daily Trend', 
       value: `${metrics.trendSlope > 0 ? '+' : ''}${metrics.trendSlope.toFixed(2)}/day`, 
-      icon: metrics.trendSlope > 0 ? '▲' : '▼',
       color: metrics.trendSlope > 0 ? emerald : red
     },
   ]
@@ -198,10 +195,9 @@ export function generatePDF(options: PDFExportOptions): void {
     
     roundedRect(x, yPos, secCardWidth, secCardHeight, 3, slate800)
     
-    // Icon
-    doc.setTextColor(...metric.color)
-    doc.setFontSize(12)
-    doc.text(metric.icon, x + 10, yPos + 18)
+    // Colored indicator dot
+    doc.setFillColor(...metric.color)
+    doc.circle(x + 12, yPos + 16, 3, 'F')
 
     // Value
     doc.setTextColor(...white)
@@ -407,7 +403,7 @@ export function generatePDF(options: PDFExportOptions): void {
           d.rvu.toFixed(1),
           d.ma7.toFixed(1),
           `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}`,
-          d.meetsTarget ? '✓ Met' : '✗ Below'
+          d.meetsTarget ? 'Met' : 'Below'
         ]
       }),
       theme: 'plain',
@@ -437,7 +433,7 @@ export function generatePDF(options: PDFExportOptions): void {
       didParseCell: (data) => {
         // Color the status column
         if (data.column.index === 5 && data.section === 'body') {
-          if (data.cell.raw?.toString().includes('✓')) {
+          if (data.cell.raw?.toString() === 'Met') {
             data.cell.styles.textColor = emerald
             data.cell.styles.fontStyle = 'bold'
           } else {
@@ -467,7 +463,7 @@ export function generatePDF(options: PDFExportOptions): void {
     doc.setTextColor(...emeraldDark)
     doc.setFontSize(10)
     doc.setFont('helvetica', 'bold')
-    doc.text('🏆  Best Performance', margin + 10, yPos + 10)
+    doc.text('Best Performance', margin + 10, yPos + 10)
     
     doc.setTextColor(...slate700)
     doc.setFontSize(9)
