@@ -78,10 +78,10 @@ export default function MetricsOverview() {
             className="metric-card animate-slide-up"
             style={{ animationDelay: card.delay }}
           >
-            <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${card.gradient} opacity-50`} />
+            <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${card.gradient}`} />
             <div className="relative">
               <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-xl bg-dark-800/80 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-xl bg-dark-800 flex items-center justify-center">
                   <card.icon className="w-6 h-6 text-primary-400" />
                 </div>
                 {card.status && (
@@ -102,14 +102,14 @@ export default function MetricsOverview() {
 
       {/* Secondary Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4">
-        <div className="p-4 rounded-xl bg-dark-800/30 border border-dark-700/30">
+        <div className="p-4 rounded-xl bg-dark-800 border border-dark-700/50">
           <div className="flex items-center gap-2 mb-1">
             <Target className="w-4 h-4 text-primary-400" />
             <span className="text-xs text-dark-400">Target Hit Rate</span>
           </div>
           <p className="text-xl font-semibold text-dark-100">{metrics.targetHitRate.toFixed(0)}%</p>
         </div>
-        <div className="p-4 rounded-xl bg-dark-800/30 border border-dark-700/30">
+        <div className="p-4 rounded-xl bg-dark-800 border border-dark-700/50">
           <div className="flex items-center gap-2 mb-1">
             {metrics.trendSlope > 0 ? (
               <TrendingUp className="w-4 h-4 text-emerald-400" />
@@ -122,14 +122,14 @@ export default function MetricsOverview() {
             {metrics.trendSlope > 0 ? '+' : ''}{metrics.trendSlope.toFixed(2)}/day
           </p>
         </div>
-        <div className="p-4 rounded-xl bg-dark-800/30 border border-dark-700/30">
+        <div className="p-4 rounded-xl bg-dark-800 border border-dark-700/50">
           <div className="flex items-center gap-2 mb-1">
             <Activity className="w-4 h-4 text-blue-400" />
             <span className="text-xs text-dark-400">7-Day Average</span>
           </div>
           <p className="text-xl font-semibold text-dark-100">{metrics.ma7.toFixed(1)}</p>
         </div>
-        <div className="p-4 rounded-xl bg-dark-800/30 border border-dark-700/30">
+        <div className="p-4 rounded-xl bg-dark-800 border border-dark-700/50">
           <div className="flex items-center gap-2 mb-1">
             <Award className="w-4 h-4 text-amber-400" />
             <span className="text-xs text-dark-400">Best Day</span>

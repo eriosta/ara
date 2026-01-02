@@ -32,12 +32,12 @@ export default function Dashboard() {
   const hasData = records.length > 0 && metrics
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-dark-950">
       {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
-      <div className="flex-1 lg:ml-72">
+      <div className="flex-1 lg:ml-72 bg-dark-950">
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-40 bg-dark-900 border-b border-dark-700/50 px-4 py-3">
           <div className="flex items-center justify-between">
