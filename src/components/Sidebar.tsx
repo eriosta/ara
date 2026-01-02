@@ -1,13 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
+import { supabase } from '@/lib/supabase'
 import { 
   Activity, X, LogOut, Upload, Target, 
-  FileText, Trash2, ChevronDown, User, AlertCircle
+  FileText, Trash2, ChevronDown, User, AlertCircle,
+  FileSpreadsheet, Calendar, Database
 } from 'lucide-react'
 import FileUpload from './FileUpload'
 import { generatePDF } from '@/lib/pdfExport'
 import toast from 'react-hot-toast'
+
+interface UploadRecord {
+  id: string
+  file_name: string
+  records_imported: number | null
+  uploaded_at: string
+}
 
 interface SidebarProps {
   isOpen: boolean
@@ -20,6 +29,27 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [localGoal, setLocalGoal] = useState(goalRvuPerDay)
+  const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
+
+  // Fetch upload history
+  useEffect(() => {
+    const fetchUploadHistory = async () => {
+      if (!user) return
+      
+      const { data, error } = await supabase
+        .from('upload_history')
+        .select('id, file_name, records_imported, uploaded_at')
+        .eq('user_id', user.id)
+        .order('uploaded_at', { ascending: false })
+        .limit(10)
+
+      if (!error && data) {
+        setUploadHistory(data)
+      }
+    }
+
+    fetchUploadHistory()
+  }, [user, records]) // Refetch when records change (after new upload)
 
   const handleGoalUpdate = async () => {
     setGoalRvuPerDay(localGoal)
@@ -182,6 +212,50 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             {showUpload && (
               <div className="p-4 rounded-xl bg-dark-800/50 animate-slide-down">
                 <FileUpload compact />
+              </div>
+            )}
+
+            {/* Saved Data / Upload History */}
+            {uploadHistory.length > 0 && (
+              <div className="mt-2 p-3 rounded-xl bg-dark-800/80 border border-dark-700/50">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="w-4 h-4 text-primary-400" />
+                  <span className="text-xs font-semibold text-dark-300 uppercase tracking-wide">Your Saved Data</span>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {uploadHistory.map((upload) => (
+                    <div 
+                      key={upload.id}
+                      className="flex items-start gap-2 p-2 rounded-lg bg-dark-900/50 border border-dark-700/30"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-dark-200 truncate font-medium">
+                          {upload.file_name}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-primary-400 font-medium">
+                            {upload.records_imported?.toLocaleString() || 0} records
+                          </span>
+                          <span className="text-[10px] text-dark-500">•</span>
+                          <span className="text-[10px] text-dark-500 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(upload.uploaded_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 pt-2 border-t border-dark-700/30">
+                  <p className="text-[10px] text-dark-500 text-center">
+                    Total: {uploadHistory.reduce((sum, u) => sum + (u.records_imported || 0), 0).toLocaleString()} records from {uploadHistory.length} upload{uploadHistory.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
               </div>
             )}
 
