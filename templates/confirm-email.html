@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Confirm Your Email - myRVU</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #020617;
+      color: #e2e8f0;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    .email-wrapper {
+      width: 100%;
+      padding: 40px 20px;
+      background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
+    }
+    
+    .email-container {
+      max-width: 480px;
+      margin: 0 auto;
+      background: #0f172a;
+      border-radius: 16px;
+      border: 1px solid #1e293b;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    
+    .header {
+      padding: 40px 40px 32px;
+      text-align: center;
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.08) 0%, transparent 100%);
+      border-bottom: 1px solid #1e293b;
+    }
+    
+    .logo {
+      margin-bottom: 24px;
+    }
+    
+    .logo-icon {
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 16px;
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      border-radius: 14px;
+      display: table-cell;
+      vertical-align: middle;
+      text-align: center;
+      box-shadow: 0 10px 25px -5px rgba(34, 197, 94, 0.4);
+    }
+    
+    .logo-text {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    
+    .logo-text .my {
+      color: #f8fafc;
+    }
+    
+    .logo-text .rvu {
+      color: #22c55e;
+    }
+    
+    .header-subtitle {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    
+    .header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #f8fafc;
+      margin: 24px 0 0;
+      letter-spacing: -0.3px;
+    }
+    
+    .content {
+      padding: 32px 40px 40px;
+    }
+    
+    .welcome-badge {
+      display: inline-block;
+      padding: 6px 14px;
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #22c55e;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .message {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    
+    .message p {
+      font-size: 15px;
+      color: #94a3b8;
+      margin: 0;
+      line-height: 1.7;
+    }
+    
+    .button-wrapper {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    
+    .confirm-button {
+      display: inline-block;
+      padding: 14px 40px;
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      color: #ffffff !important;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 10px;
+      box-shadow: 
+        0 10px 25px -5px rgba(34, 197, 94, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }
+    
+    .confirm-button:hover {
+      background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    }
+    
+    .security-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px;
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 10px;
+      border: 1px solid #334155;
+      margin-bottom: 28px;
+    }
+    
+    .security-icon {
+      flex-shrink: 0;
+      width: 20px;
+      height: 20px;
+      color: #64748b;
+    }
+    
+    .security-note p {
+      font-size: 13px;
+      color: #64748b;
+      margin: 0;
+      line-height: 1.5;
+    }
+    
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #334155, transparent);
+      margin: 0 0 24px;
+    }
+    
+    .fallback {
+      text-align: center;
+    }
+    
+    .fallback p {
+      font-size: 12px;
+      color: #64748b;
+      margin: 0 0 12px;
+    }
+    
+    .fallback-link {
+      display: block;
+      word-break: break-all;
+      font-size: 11px;
+      color: #22c55e;
+      text-decoration: none;
+      padding: 12px 16px;
+      background: rgba(34, 197, 94, 0.05);
+      border-radius: 8px;
+      border: 1px solid rgba(34, 197, 94, 0.15);
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    }
+    
+    .footer {
+      padding: 24px 40px;
+      text-align: center;
+      background: #0a0f1a;
+      border-top: 1px solid #1e293b;
+    }
+    
+    .footer-brand {
+      margin-bottom: 12px;
+    }
+    
+    .footer-brand span {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    
+    .footer-brand .my {
+      color: #94a3b8;
+    }
+    
+    .footer-brand .rvu {
+      color: #22c55e;
+    }
+    
+    .footer p {
+      font-size: 11px;
+      color: #475569;
+      margin: 0;
+      line-height: 1.6;
+    }
+    
+    .footer p + p {
+      margin-top: 4px;
+    }
+    
+    .footer-links {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #1e293b;
+    }
+    
+    .footer-links p {
+      font-size: 10px;
+      color: #334155;
+    }
+    
+    @media only screen and (max-width: 520px) {
+      .email-wrapper {
+        padding: 24px 16px;
+      }
+      
+      .header {
+        padding: 32px 24px 24px;
+      }
+      
+      .header h1 {
+        font-size: 20px;
+      }
+      
+      .content {
+        padding: 24px 24px 32px;
+      }
+      
+      .confirm-button {
+        padding: 12px 32px;
+        font-size: 14px;
+      }
+      
+      .security-note {
+        padding: 12px;
+      }
+      
+      .footer {
+        padding: 20px 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <div class="email-container">
+      <div class="header">
+        <div class="logo">
+          <div class="logo-icon">
+            <span style="color: white; font-size: 24px; font-weight: 700; font-family: system-ui, sans-serif;">R</span>
+          </div>
+          <div class="logo-text">
+            <span class="my">my</span><span class="rvu">RVU</span>
+          </div>
+          <div class="header-subtitle">Radiology Analytics</div>
+        </div>
+        <h1>Verify your email address</h1>
+      </div>
+      
+      <div class="content">
+        <div class="message">
+          <span class="welcome-badge">Welcome aboard</span>
+          <p>Thanks for signing up for myRVU! Click the button below to verify your email and start tracking your radiology productivity.</p>
+        </div>
+        
+        <div class="button-wrapper">
+          <a href="{{ .ConfirmationURL }}" class="confirm-button">Verify Email Address</a>
+        </div>
+        
+        <div class="security-note">
+          <svg class="security-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p>This verification link will expire in 24 hours. If you didn't create a myRVU account, you can safely ignore this email.</p>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="fallback">
+          <p>Button not working? Copy and paste this link:</p>
+          <a href="{{ .ConfirmationURL }}" class="fallback-link">{{ .ConfirmationURL }}</a>
+        </div>
+      </div>
+      
+      <div class="footer">
+        <div class="footer-brand">
+          <span class="my">my</span><span class="rvu">RVU</span>
+        </div>
+        <p>Track your radiology productivity with actionable insights.</p>
+        <p>Built for radiologists, by radiologists.</p>
+        
+        <div class="footer-links">
+          <p>© 2025 myRVU. All rights reserved.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

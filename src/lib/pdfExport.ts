@@ -400,9 +400,10 @@ export function generatePDF(options: PDFExportOptions): void {
       head: [['Date', 'Day', 'RVUs', '7-Day MA', 'vs Target', 'Status']],
       body: dailyData.slice(-15).reverse().map(d => {
         const diff = d.rvu - goalRvuPerDay
+        const dayOfWeek = format(new Date(d.date), 'EEE')
         return [
           d.date,
-          d.dow.substring(0, 3),
+          dayOfWeek,
           d.rvu.toFixed(1),
           d.ma7.toFixed(1),
           `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}`,
