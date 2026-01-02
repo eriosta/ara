@@ -41,7 +41,7 @@ export default function App() {
   }, [initialize])
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-dark-950">
       <Routes>
         <Route
           path="/auth"

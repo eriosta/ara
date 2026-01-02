@@ -14,6 +14,7 @@ import toast from 'react-hot-toast'
 interface UploadRecord {
   id: string
   file_name: string
+  file_path: string
   records_imported: number | null
   uploaded_at: string
 }
@@ -32,24 +33,57 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
 
   // Fetch upload history
-  useEffect(() => {
-    const fetchUploadHistory = async () => {
-      if (!user) return
-      
-      const { data, error } = await supabase
-        .from('upload_history')
-        .select('id, file_name, records_imported, uploaded_at')
-        .eq('user_id', user.id)
-        .order('uploaded_at', { ascending: false })
-        .limit(10)
+  const fetchUploadHistory = async () => {
+    if (!user) return
+    
+    const { data, error } = await supabase
+      .from('upload_history')
+      .select('id, file_name, file_path, records_imported, uploaded_at')
+      .eq('user_id', user.id)
+      .order('uploaded_at', { ascending: false })
+      .limit(10)
 
-      if (!error && data) {
-        setUploadHistory(data)
-      }
+    if (!error && data) {
+      setUploadHistory(data)
     }
+  }
 
+  useEffect(() => {
     fetchUploadHistory()
   }, [user, records]) // Refetch when records change (after new upload)
+
+  // Delete a single upload record
+  const handleDeleteUpload = async (upload: UploadRecord) => {
+    if (!user) return
+    
+    if (!window.confirm(`Delete "${upload.file_name}" and its ${upload.records_imported?.toLocaleString() || 0} records?`)) {
+      return
+    }
+
+    try {
+      // Delete from storage if file exists
+      if (upload.file_path) {
+        await supabase.storage.from('uploads').remove([upload.file_path])
+      }
+
+      // Delete from upload_history
+      const { error: historyError } = await supabase
+        .from('upload_history')
+        .delete()
+        .eq('id', upload.id)
+
+      if (historyError) {
+        toast.error('Failed to delete upload record')
+        return
+      }
+
+      // Refresh the upload history
+      await fetchUploadHistory()
+      toast.success('Upload deleted')
+    } catch {
+      toast.error('Failed to delete upload')
+    }
+  }
 
   const handleGoalUpdate = async () => {
     setGoalRvuPerDay(localGoal)
@@ -226,7 +260,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   {uploadHistory.map((upload) => (
                     <div 
                       key={upload.id}
-                      className="flex items-start gap-2 p-2 rounded-lg bg-dark-900/50 border border-dark-700/30"
+                      className="flex items-start gap-2 p-2 rounded-lg bg-dark-900/50 border border-dark-700/30 group"
                     >
                       <FileSpreadsheet className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
@@ -248,6 +282,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                           </span>
                         </div>
                       </div>
+                      <button
+                        onClick={() => handleDeleteUpload(upload)}
+                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-400 transition-all"
+                        title="Delete this upload"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
                   ))}
                 </div>

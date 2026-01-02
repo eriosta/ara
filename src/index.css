@@ -20,7 +20,7 @@ html {
 
 body {
   font-family: 'DM Sans', system-ui, sans-serif;
-  background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-mid) 50%, var(--gradient-end) 100%);
+  background: #020617;
   min-height: 100vh;
   color: #f1f5f9;
   overflow-x: hidden;

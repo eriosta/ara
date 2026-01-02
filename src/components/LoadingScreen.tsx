@@ -2,7 +2,7 @@ import { Activity } from 'lucide-react'
 
 export default function LoadingScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center grid-pattern">
+    <div className="min-h-screen flex items-center justify-center bg-dark-950">
       <div className="text-center animate-fade-in">
         <div className="relative">
           <div className="w-20 h-20 mx-auto mb-6 relative">

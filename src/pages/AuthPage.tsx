@@ -43,7 +43,7 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex grid-pattern">
+    <div className="min-h-screen flex bg-dark-950">
       {/* Left Side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary-600/20 via-dark-900 to-dark-950" />
