@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { supabase } from '@/lib/supabase'
 import { 
   Activity, X, LogOut, Upload, Target, 
   FileText, Trash2, ChevronDown, User, AlertCircle,
-  FileSpreadsheet, Calendar, Database
+  FileSpreadsheet, Calendar, Database, Download, Sun, Moon
 } from 'lucide-react'
 import FileUpload from './FileUpload'
 import { generatePDF } from '@/lib/pdfExport'
@@ -27,6 +28,7 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, profile, signOut, updateProfile } = useAuthStore()
   const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData } = useDataStore()
+  const { theme, toggleTheme } = useThemeStore()
   const [showSettings, setShowSettings] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [localGoal, setLocalGoal] = useState(goalRvuPerDay)
@@ -43,23 +45,27 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       .order('uploaded_at', { ascending: false })
       .limit(10)
 
-    if (!error && data) {
-      setUploadHistory(data)
+    if (!error) {
+      setUploadHistory(data || [])
     }
   }
 
   useEffect(() => {
     fetchUploadHistory()
-  }, [user, records]) // Refetch when records change (after new upload)
+  }, [user, records.length]) // Refetch when records count changes
 
   // Delete a single upload record
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  
   const handleDeleteUpload = async (upload: UploadRecord) => {
     if (!user) return
     
-    if (!window.confirm(`Delete "${upload.file_name}" and its ${upload.records_imported?.toLocaleString() || 0} records?`)) {
+    if (!window.confirm(`Delete "${upload.file_name}"? This will remove it from your upload history.`)) {
       return
     }
 
+    setDeletingId(upload.id)
+    
     try {
       // Delete from storage if file exists
       if (upload.file_path) {
@@ -73,15 +79,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         .eq('id', upload.id)
 
       if (historyError) {
-        toast.error('Failed to delete upload record')
+        console.error('Delete error:', historyError)
+        toast.error(`Failed to delete: ${historyError.message}`)
         return
       }
 
-      // Refresh the upload history
-      await fetchUploadHistory()
+      // Remove from local state immediately
+      setUploadHistory(prev => prev.filter(u => u.id !== upload.id))
       toast.success('Upload deleted')
-    } catch {
+    } catch (err) {
+      console.error('Delete error:', err)
       toast.error('Failed to delete upload')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -122,6 +132,64 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     toast.success('PDF exported!')
   }
 
+  const handleExportCSV = () => {
+    if (records.length === 0) {
+      toast.error('No data to export')
+      return
+    }
+
+    // CSV headers
+    const headers = [
+      'Date',
+      'Time',
+      'Day of Week',
+      'Exam Description',
+      'Modality',
+      'Body Part',
+      'Exam Type',
+      'wRVU'
+    ]
+
+    // Convert records to CSV rows
+    const rows = records.map(record => {
+      const date = record.dictationDatetime
+      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' })
+      const dateStr = date.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
+      const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+      
+      return [
+        dateStr,
+        timeStr,
+        dayOfWeek,
+        `"${record.examDescription.replace(/"/g, '""')}"`, // Escape quotes in CSV
+        record.modality,
+        record.bodyPart,
+        record.examType,
+        record.wrvuEstimate.toFixed(2)
+      ]
+    })
+
+    // Build CSV content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n')
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    const dateStr = new Date().toISOString().split('T')[0]
+    link.download = `rvu_data_${dateStr}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    toast.success(`Exported ${records.length.toLocaleString()} records to CSV`)
+  }
+
   return (
     <>
       {/* Overlay */}
@@ -133,13 +201,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       )}
 
       {/* Sidebar */}
-      <aside className={`
-        fixed top-0 left-0 h-full w-72 z-50
-        bg-dark-900 border-r border-dark-700/50
-        transform transition-transform duration-300 ease-out
-        lg:translate-x-0
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      <aside 
+        className={`
+          fixed top-0 left-0 h-full w-72 z-50
+          transform transition-all duration-300 ease-out
+          lg:translate-x-0
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+        style={{ 
+          backgroundColor: 'var(--bg-secondary)', 
+          borderRight: '1px solid var(--border-color)' 
+        }}
+      >
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="p-6 border-b border-dark-700/50">
@@ -163,19 +236,32 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
 
           {/* User Profile */}
-          <div className="p-4 border-b border-dark-700/50">
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-dark-800/50">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500/20 to-primary-600/20 flex items-center justify-center">
-                <User className="w-5 h-5 text-primary-400" />
+          <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--accent-muted)' }}>
+                <User className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-dark-100 truncate">
+                <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
                   {profile?.full_name || 'Resident'}
                 </p>
-                <p className="text-xs text-dark-400 truncate">
+                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
                   {user?.email}
                 </p>
               </div>
+              {/* Theme Toggle */}
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg transition-colors"
+                style={{ backgroundColor: 'var(--bg-hover)' }}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark' ? (
+                  <Sun className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+                ) : (
+                  <Moon className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
+                )}
+              </button>
             </div>
           </div>
 
@@ -283,11 +369,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                         </div>
                       </div>
                       <button
-                        onClick={() => handleDeleteUpload(upload)}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-400 transition-all"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteUpload(upload)
+                        }}
+                        disabled={deletingId === upload.id}
+                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-400 transition-all disabled:opacity-50"
                         title="Delete this upload"
                       >
-                        <Trash2 className="w-3 h-3" />
+                        {deletingId === upload.id ? (
+                          <div className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3 h-3" />
+                        )}
                       </button>
                     </div>
                   ))}
@@ -308,6 +402,16 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             >
               <FileText className="w-5 h-5 text-accent-400" />
               <span className="text-sm font-medium text-dark-200">Export PDF Report</span>
+            </button>
+
+            {/* Export CSV */}
+            <button
+              onClick={handleExportCSV}
+              disabled={records.length === 0}
+              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-dark-800/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="w-5 h-5 text-blue-400" />
+              <span className="text-sm font-medium text-dark-200">Export CSV Data</span>
             </button>
 
             {/* Clear Data */}

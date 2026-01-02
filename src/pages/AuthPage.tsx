@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
-import { Activity, Mail, Lock, User, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react'
+import { useThemeStore } from '@/stores/themeStore'
+import { Activity, Mail, Lock, User, ArrowRight, AlertCircle, CheckCircle, Sun, Moon } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function AuthPage() {
@@ -10,6 +11,7 @@ export default function AuthPage() {
   const [fullName, setFullName] = useState('')
   const [dataConsent, setDataConsent] = useState(false)
   const { signIn, signUp, loading } = useAuthStore()
+  const { theme, toggleTheme } = useThemeStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,7 +37,6 @@ export default function AuthPage() {
         toast.error(error.message)
       } else {
         toast.success('Account created! Check your email to confirm.', {
-          icon: <CheckCircle className="w-5 h-5 text-primary-400" />,
           duration: 6000,
         })
       }
@@ -43,209 +44,221 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-dark-950">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-600/20 via-dark-900 to-dark-950" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-primary-500/10 via-transparent to-transparent" />
-        
-        <div className="relative z-10 flex flex-col justify-center px-16 xl:px-24">
-          <div className="mb-12 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center mb-8 glow-green">
-              <Activity className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-5xl xl:text-6xl font-display font-bold mb-6">
-              <span className="gradient-text">RVU</span>
-              <br />
-              <span className="text-dark-100">Dashboard</span>
-            </h1>
-            <p className="text-xl text-dark-300 max-w-md leading-relaxed">
-              Track your radiology productivity with actionable insights and beautiful analytics.
+    <div 
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ backgroundColor: 'var(--bg-primary)' }}
+    >
+      {/* Theme Toggle */}
+      <button
+        onClick={toggleTheme}
+        className="fixed top-4 right-4 p-2 rounded-lg transition-colors"
+        style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
+      >
+        {theme === 'dark' ? (
+          <Sun className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+        ) : (
+          <Moon className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+        )}
+      </button>
+
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8 animate-fade-in">
+          <div 
+            className="w-14 h-14 rounded-xl flex items-center justify-center mx-auto mb-4"
+            style={{ backgroundColor: 'var(--accent-primary)' }}
+          >
+            <Activity className="w-7 h-7 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+            RVU Dashboard
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            Radiology Productivity Analytics
+          </p>
+        </div>
+
+        {/* Auth Card */}
+        <div 
+          className="p-6 rounded-xl animate-scale-in"
+          style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+        >
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {isLogin ? 'Sign in' : 'Create account'}
+            </h2>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              {isLogin 
+                ? 'Enter your credentials to continue' 
+                : 'Start tracking your productivity'}
             </p>
           </div>
 
-          <div className="space-y-6 animate-slide-up" style={{ animationDelay: '0.3s' }}>
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-primary-500/10 flex items-center justify-center flex-shrink-0">
-                <CheckCircle className="w-5 h-5 text-primary-400" />
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <div className="animate-slide-down">
+                <label 
+                  className="block text-sm font-medium mb-1.5"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Full Name
+                </label>
+                <div className="relative">
+                  <User 
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" 
+                    style={{ color: 'var(--text-muted)' }}
+                  />
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm outline-none transition-colors"
+                    style={{ 
+                      backgroundColor: 'var(--bg-tertiary)', 
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-primary)'
+                    }}
+                    placeholder="Dr. Jane Smith"
+                  />
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-dark-100 mb-1">Performance Analytics</h3>
-                <p className="text-dark-400 text-sm">Daily RVUs, trends, and efficiency metrics</p>
+            )}
+
+            <div>
+              <label 
+                className="block text-sm font-medium mb-1.5"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Email
+              </label>
+              <div className="relative">
+                <Mail 
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" 
+                  style={{ color: 'var(--text-muted)' }}
+                />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm outline-none transition-colors"
+                  style={{ 
+                    backgroundColor: 'var(--bg-tertiary)', 
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)'
+                  }}
+                  placeholder="you@hospital.org"
+                  required
+                />
               </div>
             </div>
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-primary-500/10 flex items-center justify-center flex-shrink-0">
-                <CheckCircle className="w-5 h-5 text-primary-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-dark-100 mb-1">Case Mix Insights</h3>
-                <p className="text-dark-400 text-sm">Modality and body part breakdown</p>
+
+            <div>
+              <label 
+                className="block text-sm font-medium mb-1.5"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Password
+              </label>
+              <div className="relative">
+                <Lock 
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" 
+                  style={{ color: 'var(--text-muted)' }}
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm outline-none transition-colors"
+                  style={{ 
+                    backgroundColor: 'var(--bg-tertiary)', 
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)'
+                  }}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                />
               </div>
             </div>
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-primary-500/10 flex items-center justify-center flex-shrink-0">
-                <CheckCircle className="w-5 h-5 text-primary-400" />
+
+            {!isLogin && (
+              <div className="animate-slide-down">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <div className="relative flex-shrink-0 mt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={dataConsent}
+                      onChange={(e) => setDataConsent(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div 
+                      className="w-4 h-4 rounded border-2 transition-all peer-checked:border-transparent"
+                      style={{ 
+                        borderColor: 'var(--border-light)',
+                        backgroundColor: dataConsent ? 'var(--accent-primary)' : 'transparent'
+                      }}
+                    />
+                    {dataConsent && (
+                      <CheckCircle className="absolute inset-0 w-4 h-4 text-white" />
+                    )}
+                  </div>
+                  <span className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                    I agree to share anonymized RVU data for research purposes.
+                  </span>
+                </label>
               </div>
-              <div>
-                <h3 className="font-semibold text-dark-100 mb-1">PDF Reports</h3>
-                <p className="text-dark-400 text-sm">Export professional insights reports</p>
-              </div>
-            </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              style={{ 
+                backgroundColor: 'var(--accent-primary)', 
+                color: 'white' 
+              }}
+            >
+              {loading ? (
+                <div 
+                  className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" 
+                />
+              ) : (
+                <>
+                  {isLogin ? 'Sign In' : 'Create Account'}
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--border-color)' }}>
+            <p className="text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+              {isLogin ? "Don't have an account?" : 'Already have an account?'}
+              <button
+                onClick={() => setIsLogin(!isLogin)}
+                className="ml-1 font-medium transition-colors"
+                style={{ color: 'var(--accent-primary)' }}
+              >
+                {isLogin ? 'Sign up' : 'Sign in'}
+              </button>
+            </p>
           </div>
         </div>
 
-        {/* Decorative Elements */}
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-primary-500/5 rounded-full blur-3xl" />
-        <div className="absolute top-1/4 right-0 w-64 h-64 bg-accent-500/5 rounded-full blur-3xl" />
-      </div>
-
-      {/* Right Side - Auth Form */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-10 animate-fade-in">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center mx-auto mb-4 glow-green">
-              <Activity className="w-7 h-7 text-white" />
-            </div>
-            <h1 className="text-3xl font-display font-bold">
-              <span className="gradient-text">RVU</span> Dashboard
-            </h1>
-          </div>
-
-          <div className="glass-card p-8 animate-scale-in">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-display font-semibold text-dark-100 mb-2">
-                {isLogin ? 'Welcome back' : 'Create account'}
-              </h2>
-              <p className="text-dark-400 text-sm">
-                {isLogin 
-                  ? 'Sign in to access your analytics dashboard' 
-                  : 'Start tracking your RVU productivity today'}
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {!isLogin && (
-                <div className="animate-slide-down">
-                  <label className="block text-sm font-medium text-dark-300 mb-2">
-                    Full Name
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="input-field pl-12"
-                      placeholder="Dr. Jane Smith"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-dark-300 mb-2">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="input-field pl-12"
-                    placeholder="you@hospital.org"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-dark-300 mb-2">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="input-field pl-12"
-                    placeholder="••••••••"
-                    required
-                    minLength={6}
-                  />
-                </div>
-              </div>
-
-              {!isLogin && (
-                <div className="animate-slide-down">
-                  <label className="flex items-start gap-3 cursor-pointer group">
-                    <div className="relative flex-shrink-0 mt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={dataConsent}
-                        onChange={(e) => setDataConsent(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-5 h-5 rounded border-2 border-dark-500 bg-dark-800 peer-checked:bg-primary-500 peer-checked:border-primary-500 transition-all group-hover:border-dark-400 peer-focus:ring-2 peer-focus:ring-primary-500/50 peer-focus:ring-offset-2 peer-focus:ring-offset-dark-900" />
-                      <CheckCircle className="absolute inset-0 w-5 h-5 text-white opacity-0 peer-checked:opacity-100 transition-opacity p-0.5" />
-                    </div>
-                    <span className="text-sm text-dark-300 leading-relaxed">
-                      I agree to share my anonymized RVU data for research and benchmarking purposes. 
-                      <span className="text-dark-500 block mt-1">
-                        Your data will be aggregated and never shared individually.
-                      </span>
-                    </span>
-                  </label>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>
-                    {isLogin ? 'Sign In' : 'Create Account'}
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="mt-6 pt-6 border-t border-dark-700">
-              <p className="text-center text-dark-400 text-sm">
-                {isLogin ? "Don't have an account?" : 'Already have an account?'}
-                <button
-                  onClick={() => setIsLogin(!isLogin)}
-                  className="ml-2 text-primary-400 hover:text-primary-300 font-medium transition-colors"
-                >
-                  {isLogin ? 'Sign up' : 'Sign in'}
-                </button>
-              </p>
-            </div>
-          </div>
-
-          {/* Security Notice */}
-          <div className="mt-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 animate-fade-in" style={{ animationDelay: '0.3s' }}>
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-sm font-semibold text-amber-300 mb-1">Security Notice</h4>
-                <p className="text-xs text-amber-300/70 leading-relaxed">
-                  Do NOT include PHI or patient identifiers. Only upload: Date/Time, Exam Description, and RVU values.
-                </p>
-              </div>
-            </div>
-          </div>
+        {/* Security Notice */}
+        <div 
+          className="mt-4 p-3 rounded-lg flex items-start gap-2"
+          style={{ 
+            backgroundColor: 'rgba(245, 158, 11, 0.1)', 
+            border: '1px solid rgba(245, 158, 11, 0.2)' 
+          }}
+        >
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} />
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--warning)' }}>
+            <strong>Security:</strong> Do not include PHI or patient identifiers.
+          </p>
         </div>
       </div>
     </div>
   )
 }
-

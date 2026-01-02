@@ -41,7 +41,7 @@ export default function App() {
   }, [initialize])
 
   return (
-    <div className="min-h-screen bg-dark-950">
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
       <Routes>
         <Route
           path="/auth"

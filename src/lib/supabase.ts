@@ -134,8 +134,12 @@ CREATE TABLE rvu_records (
   modality TEXT,
   exam_type TEXT,
   body_part TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE (user_id, dictation_datetime) -- Prevent duplicate records
 );
+
+-- If migrating existing table, add the constraint:
+-- ALTER TABLE rvu_records ADD CONSTRAINT unique_user_datetime UNIQUE (user_id, dictation_datetime);
 
 -- Create upload history table (stores references to uploaded files)
 CREATE TABLE upload_history (

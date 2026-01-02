@@ -77,9 +77,13 @@ export const useDataStore = create<DataState>((set, get) => ({
         body_part: r.bodyPart,
       }))
 
+      // Use upsert to avoid duplicates - if same user+datetime exists, update it
       const { error } = await supabase
         .from('rvu_records')
-        .insert(recordsToInsert)
+        .upsert(recordsToInsert, {
+          onConflict: 'user_id,dictation_datetime',
+          ignoreDuplicates: true // Skip duplicates instead of updating
+        })
 
       if (!error) {
         await get().fetchRecords(userId)
@@ -94,6 +98,17 @@ export const useDataStore = create<DataState>((set, get) => ({
   clearRecords: async (userId: string) => {
     set({ loading: true })
     try {
+      // Clear local state immediately
+      set({ 
+        records: [], 
+        metrics: null, 
+        dailyData: [], 
+        hourlyData: [], 
+        caseMixData: [],
+        modalityData: [],
+        heatmapData: []
+      })
+
       // Delete all RVU records
       const { error } = await supabase
         .from('rvu_records')
@@ -119,18 +134,6 @@ export const useDataStore = create<DataState>((set, get) => ({
         .from('upload_history')
         .delete()
         .eq('user_id', userId)
-
-      if (!error) {
-        set({ 
-          records: [], 
-          metrics: null, 
-          dailyData: [], 
-          hourlyData: [], 
-          caseMixData: [],
-          modalityData: [],
-          heatmapData: []
-        })
-      }
 
       return { error: error as Error | null }
     } finally {
