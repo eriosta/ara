@@ -26,46 +26,97 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
 
   const processExcelFile = async (file: File): Promise<{ dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]> => {
     const buffer = await file.arrayBuffer()
-    const workbook = XLSX.read(buffer, { type: 'array' })
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
     const sheetName = workbook.SheetNames[0]
     const worksheet = workbook.Sheets[sheetName]
     
-    // Skip first 8 rows (metadata) like the old Python version
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 8 }) as (string | number | Date)[][]
+    // Get all data as array of arrays
+    const allData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as (string | number | Date)[][]
     
-    if (jsonData.length < 2) {
+    if (allData.length < 2) {
       throw new Error('No data found in file')
     }
 
+    // Find the header row by looking for DICTATION DTTM column
+    let headerRowIndex = -1
+    for (let i = 0; i < Math.min(20, allData.length); i++) {
+      const row = allData[i]
+      if (!row || !Array.isArray(row)) continue
+      
+      const hasHeader = row.some(cell => {
+        if (cell === null || cell === undefined) return false
+        const cellStr = String(cell).toUpperCase()
+        return cellStr.includes('DICTATION') || cellStr.includes('DTTM')
+      })
+      
+      if (hasHeader) {
+        headerRowIndex = i
+        break
+      }
+    }
+
+    if (headerRowIndex === -1) {
+      throw new Error('Could not find header row with DICTATION DTTM column')
+    }
+
+    // Get headers from the found row
+    const headerRow = allData[headerRowIndex]
+    const headers: string[] = headerRow.map(h => 
+      h === null || h === undefined ? '' : String(h).toLowerCase().trim()
+    )
+
     // Find column indices
-    const headers = jsonData[0].map(h => String(h).toLowerCase().trim())
-    const dtIdx = headers.findIndex(h => h.includes('dttm') || h.includes('datetime') || h.includes('dictation'))
+    const dtIdx = headers.findIndex(h => h.includes('dttm') || h.includes('dictation'))
     const examIdx = headers.findIndex(h => h.includes('exam') && h.includes('desc'))
     const rvuIdx = headers.findIndex(h => h.includes('wrvu') || h.includes('rvu'))
 
-    if (dtIdx === -1 || examIdx === -1 || rvuIdx === -1) {
-      throw new Error(`Missing required columns. Found: ${headers.join(', ')}`)
+    if (dtIdx === -1) {
+      throw new Error(`Missing DICTATION DTTM column. Found columns: ${headers.filter(h => h).join(', ')}`)
+    }
+    if (examIdx === -1) {
+      throw new Error(`Missing EXAM DESC column. Found columns: ${headers.filter(h => h).join(', ')}`)
+    }
+    if (rvuIdx === -1) {
+      throw new Error(`Missing WRVU column. Found columns: ${headers.filter(h => h).join(', ')}`)
     }
 
-    // Process rows
-    const data = jsonData.slice(1)
-      .filter(row => row[dtIdx] && row[examIdx]) // Filter empty rows
+    // Process data rows (everything after header)
+    const dataRows = allData.slice(headerRowIndex + 1)
+    
+    const data = dataRows
+      .filter(row => {
+        if (!row || !Array.isArray(row)) return false
+        return row[dtIdx] && row[examIdx]
+      })
       .map(row => {
         let dateValue = row[dtIdx]
         
-        // Handle Excel date serial numbers
-        if (typeof dateValue === 'number') {
+        // Handle different date formats
+        if (dateValue instanceof Date) {
+          // Already a Date object
+          dateValue = dateValue.toISOString()
+        } else if (typeof dateValue === 'number') {
+          // Excel serial date number
           const excelDate = XLSX.SSF.parse_date_code(dateValue)
-          dateValue = `${excelDate.y}-${String(excelDate.m).padStart(2, '0')}-${String(excelDate.d).padStart(2, '0')} ${String(excelDate.H).padStart(2, '0')}:${String(excelDate.M).padStart(2, '0')}:${String(excelDate.S).padStart(2, '0')}`
+          if (excelDate) {
+            dateValue = `${excelDate.y}-${String(excelDate.m).padStart(2, '0')}-${String(excelDate.d).padStart(2, '0')} ${String(excelDate.H || 0).padStart(2, '0')}:${String(excelDate.M || 0).padStart(2, '0')}:${String(excelDate.S || 0).padStart(2, '0')}`
+          }
         }
+        
+        const rvuValue = row[rvuIdx]
+        const wrvu = typeof rvuValue === 'number' ? rvuValue : parseFloat(String(rvuValue)) || 0
         
         return {
           dictation_datetime: String(dateValue),
-          exam_description: String(row[examIdx]),
-          wrvu_estimate: parseFloat(String(row[rvuIdx])) || 0,
+          exam_description: String(row[examIdx] || ''),
+          wrvu_estimate: wrvu,
         }
       })
       .filter(row => row.dictation_datetime && row.exam_description && !isNaN(row.wrvu_estimate))
+
+    if (data.length === 0) {
+      throw new Error('No valid data rows found after header')
+    }
 
     return data
   }
