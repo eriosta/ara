@@ -8,6 +8,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
+  const [dataConsent, setDataConsent] = useState(false)
   const { signIn, signUp, loading } = useAuthStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,7 +26,11 @@ export default function AuthPage() {
         toast.error('Please enter your full name')
         return
       }
-      const { error } = await signUp(email, password, fullName)
+      if (!dataConsent) {
+        toast.error('Please agree to the data sharing terms to continue')
+        return
+      }
+      const { error } = await signUp(email, password, fullName, dataConsent)
       if (error) {
         toast.error(error.message)
       } else {
@@ -173,6 +178,29 @@ export default function AuthPage() {
                   />
                 </div>
               </div>
+
+              {!isLogin && (
+                <div className="animate-slide-down">
+                  <label className="flex items-start gap-3 cursor-pointer group">
+                    <div className="relative flex-shrink-0 mt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={dataConsent}
+                        onChange={(e) => setDataConsent(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-5 h-5 rounded border-2 border-dark-500 bg-dark-800 peer-checked:bg-primary-500 peer-checked:border-primary-500 transition-all group-hover:border-dark-400 peer-focus:ring-2 peer-focus:ring-primary-500/50 peer-focus:ring-offset-2 peer-focus:ring-offset-dark-900" />
+                      <CheckCircle className="absolute inset-0 w-5 h-5 text-white opacity-0 peer-checked:opacity-100 transition-opacity p-0.5" />
+                    </div>
+                    <span className="text-sm text-dark-300 leading-relaxed">
+                      I agree to share my anonymized RVU data for research and benchmarking purposes. 
+                      <span className="text-dark-500 block mt-1">
+                        Your data will be aggregated and never shared individually.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
 
               <button
                 type="submit"

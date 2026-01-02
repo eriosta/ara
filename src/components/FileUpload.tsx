@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
+import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, X, File } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -121,6 +122,44 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
     return data
   }
 
+  // Upload original file to Supabase Storage
+  const uploadFileToStorage = async (file: File, userId: string): Promise<string | null> => {
+    const timestamp = Date.now()
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
+    const filePath = `${userId}/${timestamp}_${sanitizedName}`
+
+    const { error } = await supabase.storage
+      .from('uploads')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+      })
+
+    if (error) {
+      console.error('Storage upload error:', error)
+      return null
+    }
+
+    return filePath
+  }
+
+  // Save upload history to database
+  const saveUploadHistory = async (
+    userId: string,
+    fileName: string,
+    filePath: string,
+    fileSize: number,
+    recordsImported: number
+  ) => {
+    await supabase.from('upload_history').insert({
+      user_id: userId,
+      file_name: fileName,
+      file_path: filePath,
+      file_size: fileSize,
+      records_imported: recordsImported,
+    })
+  }
+
   const processAllFiles = async () => {
     if (!user || selectedFiles.length === 0) return
 
@@ -145,6 +184,12 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
       try {
         const data = await processExcelFile(file)
         allData.push(...data)
+
+        // Upload original file to storage
+        const filePath = await uploadFileToStorage(file, user.id)
+        if (filePath) {
+          await saveUploadHistory(user.id, file.name, filePath, file.size, data.length)
+        }
         
         // Update status to done
         setProcessedFiles(prev => prev.map((f, idx) => 

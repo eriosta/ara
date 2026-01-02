@@ -8,7 +8,6 @@ import HourlyEfficiencyChart from '@/components/charts/HourlyEfficiencyChart'
 import CaseMixChart from '@/components/charts/CaseMixChart'
 import ModalityPieChart from '@/components/charts/ModalityPieChart'
 import HeatmapChart from '@/components/charts/HeatmapChart'
-import FileUpload from '@/components/FileUpload'
 import EmptyState from '@/components/EmptyState'
 import { Menu } from 'lucide-react'
 
@@ -63,10 +62,7 @@ export default function Dashboard() {
               </div>
             </div>
           ) : !hasData ? (
-            <div className="space-y-8">
-              <EmptyState />
-              <FileUpload />
-            </div>
+            <EmptyState />
           ) : (
             <div className="space-y-8 animate-fade-in">
               {/* Metrics Overview */}

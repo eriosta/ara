@@ -7,6 +7,7 @@ interface Profile {
   email: string
   full_name: string | null
   goal_rvu_per_day: number
+  data_sharing_consent: boolean
 }
 
 interface AuthState {
@@ -16,7 +17,7 @@ interface AuthState {
   loading: boolean
   initialized: boolean
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>
+  signUp: (email: string, password: string, fullName: string, dataConsent: boolean) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   initialize: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<{ error: Error | null }>
@@ -81,7 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signUp: async (email: string, password: string, fullName: string) => {
+  signUp: async (email: string, password: string, fullName: string, dataConsent: boolean) => {
     set({ loading: true })
     try {
       const { error } = await supabase.auth.signUp({
@@ -90,6 +91,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         options: {
           data: {
             full_name: fullName,
+            data_sharing_consent: dataConsent,
           },
         },
       })

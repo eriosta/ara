@@ -41,7 +41,7 @@ export default function App() {
   }, [initialize])
 
   return (
-    <div className="min-h-screen noise-overlay">
+    <div className="min-h-screen">
       <Routes>
         <Route
           path="/auth"
