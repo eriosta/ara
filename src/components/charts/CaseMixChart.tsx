@@ -19,14 +19,28 @@ export default function CaseMixChart() {
   }))
 
   return (
-    <section className="chart-container animate-slide-up" style={{ animationDelay: '0.3s' }}>
+    <section 
+      className="p-5 rounded-xl animate-slide-up" 
+      style={{ 
+        backgroundColor: 'var(--bg-card)', 
+        border: '1px solid var(--border-color)',
+        animationDelay: '0.3s' 
+      }}
+    >
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-          <Layers className="w-5 h-5 text-emerald-400" />
+        <div 
+          className="w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{ backgroundColor: 'var(--accent-muted)' }}
+        >
+          <Layers className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
         </div>
         <div>
-          <h3 className="text-lg font-display font-semibold text-dark-100">Top Case Mix</h3>
-          <p className="text-sm text-dark-400">Modality & Body Part combinations</p>
+          <h3 className="text-lg font-display font-semibold" style={{ color: 'var(--text-primary)' }}>
+            Top Case Mix
+          </h3>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Modality & Body Part combinations
+          </p>
         </div>
       </div>
 
@@ -37,32 +51,30 @@ export default function CaseMixChart() {
             layout="vertical"
             margin={{ top: 10, right: 30, left: 10, bottom: 0 }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} horizontal={true} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" opacity={0.5} horizontal={true} vertical={false} />
             <XAxis 
               type="number"
-              stroke="#64748b"
-              tick={{ fill: '#94a3b8', fontSize: 11 }}
+              tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
               tickLine={false}
-              axisLine={{ stroke: '#334155' }}
+              axisLine={{ stroke: 'var(--border-color)' }}
             />
             <YAxis 
               type="category"
               dataKey="shortLabel"
-              stroke="#64748b"
-              tick={{ fill: '#94a3b8', fontSize: 10 }}
+              tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
               tickLine={false}
-              axisLine={{ stroke: '#334155' }}
+              axisLine={{ stroke: 'var(--border-color)' }}
               width={140}
             />
             <Tooltip 
               contentStyle={{
-                backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                border: '1px solid rgba(34, 197, 94, 0.2)',
-                borderRadius: '12px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                backgroundColor: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                boxShadow: 'var(--shadow-lg)',
               }}
-              labelStyle={{ color: '#f1f5f9', fontWeight: 600 }}
-              itemStyle={{ color: '#94a3b8', fontSize: '12px' }}
+              labelStyle={{ color: 'var(--text-primary)', fontWeight: 600 }}
+              itemStyle={{ color: 'var(--text-secondary)', fontSize: '12px' }}
               formatter={(value: number, _name: string, props: any) => [
                 `${value.toFixed(1)} RVUs (${props.payload.cases} cases)`,
                 ''
@@ -84,4 +96,3 @@ export default function CaseMixChart() {
     </section>
   )
 }
-

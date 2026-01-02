@@ -254,20 +254,20 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
           {...getRootProps()}
           className={`
             p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all
-            ${isDragActive 
-              ? 'border-primary-500 bg-primary-500/10' 
-              : 'border-dark-600 hover:border-dark-500 hover:bg-dark-800/30'
-            }
             ${(uploading || loading) ? 'opacity-50 cursor-not-allowed' : ''}
           `}
+          style={{
+            borderColor: isDragActive ? 'var(--accent-primary)' : 'var(--border-color)',
+            backgroundColor: isDragActive ? 'var(--accent-muted)' : 'transparent'
+          }}
         >
           <input {...getInputProps()} />
           <div className="text-center">
-            <Upload className="w-6 h-6 mx-auto text-dark-400 mb-2" />
-            <p className="text-sm text-dark-300">
+            <Upload className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               Drop Excel files or click
             </p>
-            <p className="text-xs text-dark-500 mt-1">
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
               Multiple .xlsx files supported
             </p>
           </div>
@@ -279,18 +279,22 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
             {selectedFiles.map((file, i) => {
               const processed = processedFiles[i]
               return (
-                <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-dark-800/50 text-xs">
-                  <File className="w-4 h-4 text-primary-400 flex-shrink-0" />
-                  <span className="truncate flex-1 text-dark-300">{file.name}</span>
+                <div 
+                  key={i} 
+                  className="flex items-center gap-2 p-2 rounded-lg text-xs"
+                  style={{ backgroundColor: 'var(--bg-hover)' }}
+                >
+                  <File className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent-primary)' }} />
+                  <span className="truncate flex-1" style={{ color: 'var(--text-secondary)' }}>{file.name}</span>
                   {processed?.status === 'done' && (
-                    <span className="text-primary-400">{processed.rows} rows</span>
+                    <span style={{ color: 'var(--accent-primary)' }}>{processed.rows} rows</span>
                   )}
                   {processed?.status === 'error' && (
-                    <span className="text-red-400">Error</span>
+                    <span style={{ color: 'var(--danger)' }}>Error</span>
                   )}
                   {!uploading && (
-                    <button onClick={() => removeFile(i)} className="p-1 hover:bg-dark-700 rounded">
-                      <X className="w-3 h-3 text-dark-400" />
+                    <button onClick={() => removeFile(i)} className="p-1 rounded interactive-item">
+                      <X className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
                     </button>
                   )}
                 </div>
@@ -299,7 +303,8 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
             <button
               onClick={processAllFiles}
               disabled={uploading || selectedFiles.length === 0}
-              className="w-full py-2 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition-colors disabled:opacity-50"
+              className="w-full py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-50"
+              style={{ backgroundColor: 'var(--accent-primary)' }}
             >
               {uploading ? 'Processing...' : `Import ${selectedFiles.length} File${selectedFiles.length > 1 ? 's' : ''}`}
             </button>
@@ -310,14 +315,24 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
   }
 
   return (
-    <div className="glass-card p-8 animate-slide-up">
+    <div 
+      className="p-8 rounded-xl animate-slide-up"
+      style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+    >
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center">
-          <FileSpreadsheet className="w-6 h-6 text-primary-400" />
+        <div 
+          className="w-12 h-12 rounded-xl flex items-center justify-center"
+          style={{ backgroundColor: 'var(--accent-muted)' }}
+        >
+          <FileSpreadsheet className="w-6 h-6" style={{ color: 'var(--accent-primary)' }} />
         </div>
         <div>
-          <h3 className="text-xl font-display font-semibold text-dark-100">Upload Your Data</h3>
-          <p className="text-sm text-dark-400">Import multiple Excel files - they'll be combined automatically</p>
+          <h3 className="text-xl font-display font-semibold" style={{ color: 'var(--text-primary)' }}>
+            Upload Your Data
+          </h3>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Import multiple Excel files - they'll be combined automatically
+          </p>
         </div>
       </div>
 
@@ -325,27 +340,30 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
         {...getRootProps()}
         className={`
           p-8 border-2 border-dashed rounded-2xl cursor-pointer transition-all
-          ${isDragActive 
-            ? 'border-primary-500 bg-primary-500/10' 
-            : 'border-dark-600 hover:border-primary-500/50 hover:bg-dark-800/30'
-          }
           ${(uploading || loading) ? 'opacity-50 cursor-not-allowed' : ''}
         `}
+        style={{
+          borderColor: isDragActive ? 'var(--accent-primary)' : 'var(--border-color)',
+          backgroundColor: isDragActive ? 'var(--accent-muted)' : 'transparent'
+        }}
       >
         <input {...getInputProps()} />
         <div className="text-center">
           {uploading ? (
             <>
-              <div className="w-12 h-12 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-dark-200">Processing your files...</p>
+              <div 
+                className="w-12 h-12 border-2 rounded-full animate-spin mx-auto mb-4"
+                style={{ borderColor: 'var(--accent-muted)', borderTopColor: 'var(--accent-primary)' }}
+              />
+              <p style={{ color: 'var(--text-secondary)' }}>Processing your files...</p>
             </>
           ) : (
             <>
-              <Upload className="w-12 h-12 mx-auto text-dark-400 mb-4" />
-              <p className="text-lg text-dark-200 mb-2">
+              <Upload className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--text-muted)' }} />
+              <p className="text-lg mb-2" style={{ color: 'var(--text-secondary)' }}>
                 {isDragActive ? 'Drop your files here' : 'Drag & drop Excel files here'}
               </p>
-              <p className="text-sm text-dark-400">
+              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                 or click to browse • Multiple .xlsx files supported
               </p>
             </>
@@ -356,8 +374,11 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
       {/* Selected files list */}
       {selectedFiles.length > 0 && (
         <div className="mt-6">
-          <h4 className="text-sm font-semibold text-dark-200 mb-3 flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-primary-400" />
+          <h4 
+            className="text-sm font-semibold mb-3 flex items-center gap-2"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <FileSpreadsheet className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
             Selected Files ({selectedFiles.length})
           </h4>
           <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -366,42 +387,59 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
               return (
                 <div 
                   key={i} 
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
-                    processed?.status === 'error' 
-                      ? 'bg-red-500/10 border border-red-500/20' 
+                  className="flex items-center gap-3 p-3 rounded-xl transition-colors"
+                  style={{ 
+                    backgroundColor: processed?.status === 'error' 
+                      ? 'var(--danger-muted)' 
                       : processed?.status === 'done'
-                      ? 'bg-primary-500/10 border border-primary-500/20'
-                      : 'bg-dark-800/50 border border-dark-700/30'
-                  }`}
+                      ? 'var(--accent-muted)'
+                      : 'var(--bg-tertiary)',
+                    border: `1px solid ${processed?.status === 'error' 
+                      ? 'var(--danger)' 
+                      : processed?.status === 'done'
+                      ? 'var(--accent-primary)'
+                      : 'var(--border-color)'}`,
+                    borderColor: processed?.status === 'error' 
+                      ? 'color-mix(in srgb, var(--danger) 30%, transparent)' 
+                      : processed?.status === 'done'
+                      ? 'color-mix(in srgb, var(--accent-primary) 30%, transparent)'
+                      : 'var(--border-color)'
+                  }}
                 >
-                  <File className={`w-5 h-5 flex-shrink-0 ${
-                    processed?.status === 'error' ? 'text-red-400' :
-                    processed?.status === 'done' ? 'text-primary-400' :
-                    'text-dark-400'
-                  }`} />
+                  <File 
+                    className="w-5 h-5 flex-shrink-0" 
+                    style={{ 
+                      color: processed?.status === 'error' ? 'var(--danger)' :
+                        processed?.status === 'done' ? 'var(--accent-primary)' :
+                        'var(--text-muted)'
+                    }}
+                  />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-dark-200 truncate">{file.name}</p>
-                    <p className="text-xs text-dark-500">
+                    <p className="text-sm truncate" style={{ color: 'var(--text-secondary)' }}>{file.name}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       {processed?.status === 'processing' && 'Processing...'}
                       {processed?.status === 'done' && `${processed.rows.toLocaleString()} records`}
                       {processed?.status === 'error' && (
-                        <span className="text-red-400">{processed.error}</span>
+                        <span style={{ color: 'var(--danger)' }}>{processed.error}</span>
                       )}
                       {!processed && `${(file.size / 1024).toFixed(1)} KB`}
                     </p>
                   </div>
                   {processed?.status === 'done' && (
-                    <CheckCircle className="w-5 h-5 text-primary-400 flex-shrink-0" />
+                    <CheckCircle className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--accent-primary)' }} />
                   )}
                   {processed?.status === 'processing' && (
-                    <div className="w-5 h-5 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin flex-shrink-0" />
+                    <div 
+                      className="w-5 h-5 border-2 rounded-full animate-spin flex-shrink-0"
+                      style={{ borderColor: 'var(--accent-muted)', borderTopColor: 'var(--accent-primary)' }}
+                    />
                   )}
                   {!uploading && !processed && (
                     <button 
                       onClick={() => removeFile(i)} 
-                      className="p-1.5 rounded-lg hover:bg-dark-700 transition-colors"
+                      className="p-1.5 rounded-lg transition-colors interactive-item"
                     >
-                      <X className="w-4 h-4 text-dark-400" />
+                      <X className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
                     </button>
                   )}
                 </div>
@@ -412,7 +450,8 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
           <button
             onClick={processAllFiles}
             disabled={uploading || selectedFiles.length === 0}
-            className="mt-4 btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-4 w-full py-2.5 rounded-lg text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--accent-primary)' }}
           >
             {uploading 
               ? 'Processing & Uploading...' 
@@ -423,34 +462,40 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
       )}
 
       {/* Required columns info */}
-      <div className="mt-6 p-4 rounded-xl bg-dark-800/50 border border-dark-700">
-        <h4 className="text-sm font-semibold text-dark-200 mb-3 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-amber-400" />
+      <div 
+        className="mt-6 p-4 rounded-xl"
+        style={{ backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}
+      >
+        <h4 
+          className="text-sm font-semibold mb-3 flex items-center gap-2"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          <AlertCircle className="w-4 h-4" style={{ color: 'var(--warning)' }} />
           Expected Excel Format
         </h4>
-        <p className="text-xs text-dark-400 mb-3">
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
           Files should be PS360 Resident Dictation Reports (header on row 9)
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="flex items-start gap-2">
-            <CheckCircle className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
+            <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--accent-primary)' }} />
             <div>
-              <p className="text-dark-200 font-medium">DICTATION DTTM</p>
-              <p className="text-dark-500">Date/time column</p>
+              <p className="font-medium" style={{ color: 'var(--text-secondary)' }}>DICTATION DTTM</p>
+              <p style={{ color: 'var(--text-muted)' }}>Date/time column</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
+            <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--accent-primary)' }} />
             <div>
-              <p className="text-dark-200 font-medium">EXAM DESC</p>
-              <p className="text-dark-500">Exam description</p>
+              <p className="font-medium" style={{ color: 'var(--text-secondary)' }}>EXAM DESC</p>
+              <p style={{ color: 'var(--text-muted)' }}>Exam description</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <CheckCircle className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
+            <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--accent-primary)' }} />
             <div>
-              <p className="text-dark-200 font-medium">WRVU ESTIMATE</p>
-              <p className="text-dark-500">Work RVU value</p>
+              <p className="font-medium" style={{ color: 'var(--text-secondary)' }}>WRVU ESTIMATE</p>
+              <p style={{ color: 'var(--text-muted)' }}>Work RVU value</p>
             </div>
           </div>
         </div>

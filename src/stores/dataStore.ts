@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import { processRawData, RVURecord, ProcessedMetrics, DailyData, HourlyData, CaseMixData } from '@/lib/dataProcessing'
+import { processRawData, modalityFromDesc, examFromDesc, bodyPartsFromDesc, RVURecord, ProcessedMetrics, DailyData, HourlyData, CaseMixData } from '@/lib/dataProcessing'
 
 interface DataState {
   records: RVURecord[]
@@ -16,6 +16,8 @@ interface DataState {
   fetchRecords: (userId: string) => Promise<void>
   addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ error: Error | null }>
   clearRecords: (userId: string) => Promise<{ error: Error | null }>
+  reprocessRecords: (userId: string) => Promise<{ error: Error | null; count: number }>
+  exportCSVFromDB: (userId: string) => Promise<string | null>
   processData: () => void
 }
 
@@ -139,6 +141,98 @@ export const useDataStore = create<DataState>((set, get) => ({
     } finally {
       set({ loading: false })
     }
+  },
+
+  // Reprocess all records with updated dataProcessing logic
+  reprocessRecords: async (userId: string) => {
+    set({ loading: true })
+    try {
+      // Fetch all records
+      const { data, error: fetchError } = await supabase
+        .from('rvu_records')
+        .select('id, exam_description')
+        .eq('user_id', userId)
+
+      if (fetchError || !data) {
+        return { error: fetchError as Error | null, count: 0 }
+      }
+
+      // Reprocess each record with updated logic
+      let updatedCount = 0
+      for (const record of data) {
+        const newModality = modalityFromDesc(record.exam_description)
+        const newExamType = examFromDesc(record.exam_description)
+        const newBodyPart = bodyPartsFromDesc(record.exam_description)
+
+        const { error: updateError } = await supabase
+          .from('rvu_records')
+          .update({
+            modality: newModality,
+            exam_type: newExamType,
+            body_part: newBodyPart,
+          })
+          .eq('id', record.id)
+
+        if (!updateError) updatedCount++
+      }
+
+      // Refresh records
+      await get().fetchRecords(userId)
+
+      return { error: null, count: updatedCount }
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  // Export CSV directly from database
+  exportCSVFromDB: async (userId: string) => {
+    const { data, error } = await supabase
+      .from('rvu_records')
+      .select('dictation_datetime, exam_description, wrvu_estimate, modality, exam_type, body_part')
+      .eq('user_id', userId)
+      .order('dictation_datetime', { ascending: true })
+
+    if (error || !data) {
+      return null
+    }
+
+    // CSV headers
+    const headers = [
+      'Date',
+      'Time',
+      'Day of Week',
+      'Exam Description',
+      'Modality',
+      'Body Part',
+      'Exam Type',
+      'wRVU'
+    ]
+
+    // Convert records to CSV rows
+    const rows = data.map(record => {
+      const date = new Date(record.dictation_datetime)
+      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' })
+      const dateStr = date.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
+      const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+      
+      return [
+        dateStr,
+        timeStr,
+        dayOfWeek,
+        `"${(record.exam_description || '').replace(/"/g, '""')}"`,
+        record.modality || '',
+        record.body_part || '',
+        record.exam_type || '',
+        (record.wrvu_estimate || 0).toFixed(2)
+      ]
+    })
+
+    // Build CSV content
+    return [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n')
   },
 
   processData: () => {

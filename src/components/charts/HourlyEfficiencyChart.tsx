@@ -21,49 +21,61 @@ export default function HourlyEfficiencyChart() {
     }))
 
   return (
-    <section className="chart-container animate-slide-up" style={{ animationDelay: '0.2s' }}>
+    <section 
+      className="p-5 rounded-xl animate-slide-up" 
+      style={{ 
+        backgroundColor: 'var(--bg-card)', 
+        border: '1px solid var(--border-color)',
+        animationDelay: '0.2s' 
+      }}
+    >
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
-          <Clock className="w-5 h-5 text-violet-400" />
+        <div 
+          className="w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{ backgroundColor: 'var(--info-muted)' }}
+        >
+          <Clock className="w-5 h-5" style={{ color: 'var(--info)' }} />
         </div>
         <div>
-          <h3 className="text-lg font-display font-semibold text-dark-100">Hourly Efficiency</h3>
-          <p className="text-sm text-dark-400">Target: {hourlyTarget.toFixed(1)} RVUs/hour</p>
+          <h3 className="text-lg font-display font-semibold" style={{ color: 'var(--text-primary)' }}>
+            Hourly Efficiency
+          </h3>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Target: {hourlyTarget.toFixed(1)} RVUs/hour
+          </p>
         </div>
       </div>
 
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={filteredData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.3} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" opacity={0.5} vertical={false} />
             <XAxis 
               dataKey="hourLabel" 
-              stroke="#64748b"
-              tick={{ fill: '#94a3b8', fontSize: 10 }}
+              tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
               tickLine={false}
-              axisLine={{ stroke: '#334155' }}
+              axisLine={{ stroke: 'var(--border-color)' }}
             />
             <YAxis 
-              stroke="#64748b"
-              tick={{ fill: '#94a3b8', fontSize: 11 }}
+              tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
               tickLine={false}
-              axisLine={{ stroke: '#334155' }}
+              axisLine={{ stroke: 'var(--border-color)' }}
             />
             <Tooltip 
               contentStyle={{
-                backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                border: '1px solid rgba(139, 92, 246, 0.2)',
-                borderRadius: '12px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                backgroundColor: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                boxShadow: 'var(--shadow-lg)',
               }}
-              labelStyle={{ color: '#f1f5f9', fontWeight: 600 }}
-              itemStyle={{ color: '#94a3b8', fontSize: '12px' }}
+              labelStyle={{ color: 'var(--text-primary)', fontWeight: 600 }}
+              itemStyle={{ color: 'var(--text-secondary)', fontSize: '12px' }}
               formatter={(value: number) => [value.toFixed(2), 'Avg RVUs/hour']}
               labelFormatter={(label) => `${label}`}
             />
             <ReferenceLine 
               y={hourlyTarget} 
-              stroke="#ef4444" 
+              stroke="var(--danger)" 
               strokeDasharray="5 5" 
               strokeWidth={2}
             />
@@ -76,7 +88,7 @@ export default function HourlyEfficiencyChart() {
                 <Cell 
                   key={`cell-${index}`} 
                   fill={entry.meetsTarget ? '#22c55e' : '#f59e0b'} 
-                  fillOpacity={0.8}
+                  fillOpacity={0.85}
                 />
               ))}
             </Bar>
@@ -86,15 +98,14 @@ export default function HourlyEfficiencyChart() {
 
       <div className="mt-4 flex items-center gap-6 text-xs">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-primary-500" />
-          <span className="text-dark-400">Meets Target</span>
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: '#22c55e' }} />
+          <span style={{ color: 'var(--text-muted)' }}>Meets Target</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-amber-500" />
-          <span className="text-dark-400">Below Target</span>
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: '#f59e0b' }} />
+          <span style={{ color: 'var(--text-muted)' }}>Below Target</span>
         </div>
       </div>
     </section>
   )
 }
-

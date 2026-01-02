@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { 
   Activity, X, LogOut, Upload, Target, 
   FileText, Trash2, ChevronDown, User, AlertCircle,
-  FileSpreadsheet, Calendar, Database, Download, Sun, Moon
+  FileSpreadsheet, Calendar, Database, Download, Sun, Moon, RefreshCw
 } from 'lucide-react'
 import FileUpload from './FileUpload'
 import { generatePDF } from '@/lib/pdfExport'
@@ -27,12 +27,13 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, profile, signOut, updateProfile } = useAuthStore()
-  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData } = useDataStore()
+  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, reprocessRecords, loading } = useDataStore()
   const { theme, toggleTheme } = useThemeStore()
   const [showSettings, setShowSettings] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [localGoal, setLocalGoal] = useState(goalRvuPerDay)
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
+  const [reprocessing, setReprocessing] = useState(false)
 
   // Fetch upload history
   const fetchUploadHistory = async () => {
@@ -132,48 +133,21 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     toast.success('PDF exported!')
   }
 
-  const handleExportCSV = () => {
-    if (records.length === 0) {
+  const handleExportCSV = async () => {
+    if (!user || records.length === 0) {
       toast.error('No data to export')
       return
     }
 
-    // CSV headers
-    const headers = [
-      'Date',
-      'Time',
-      'Day of Week',
-      'Exam Description',
-      'Modality',
-      'Body Part',
-      'Exam Type',
-      'wRVU'
-    ]
+    toast.loading('Fetching data from database...', { id: 'export' })
 
-    // Convert records to CSV rows
-    const rows = records.map(record => {
-      const date = record.dictationDatetime
-      const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' })
-      const dateStr = date.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
-      const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
-      
-      return [
-        dateStr,
-        timeStr,
-        dayOfWeek,
-        `"${record.examDescription.replace(/"/g, '""')}"`, // Escape quotes in CSV
-        record.modality,
-        record.bodyPart,
-        record.examType,
-        record.wrvuEstimate.toFixed(2)
-      ]
-    })
-
-    // Build CSV content
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n')
+    // Export directly from database
+    const csvContent = await exportCSVFromDB(user.id)
+    
+    if (!csvContent) {
+      toast.error('Failed to export data', { id: 'export' })
+      return
+    }
 
     // Create and download file
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -187,7 +161,31 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
     
-    toast.success(`Exported ${records.length.toLocaleString()} records to CSV`)
+    toast.success(`Exported ${records.length.toLocaleString()} records to CSV`, { id: 'export' })
+  }
+
+  const handleReprocessData = async () => {
+    if (!user || records.length === 0) {
+      toast.error('No data to reprocess')
+      return
+    }
+
+    if (!window.confirm('Reprocess all records with updated classification logic? This will update modality, body part, and exam type for all records.')) {
+      return
+    }
+
+    setReprocessing(true)
+    toast.loading('Reprocessing records...', { id: 'reprocess' })
+
+    const { error, count } = await reprocessRecords(user.id)
+
+    setReprocessing(false)
+
+    if (error) {
+      toast.error('Failed to reprocess records', { id: 'reprocess' })
+    } else {
+      toast.success(`Reprocessed ${count.toLocaleString()} records`, { id: 'reprocess' })
+    }
   }
 
   return (
@@ -210,35 +208,47 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         `}
         style={{ 
           backgroundColor: 'var(--bg-secondary)', 
-          borderRight: '1px solid var(--border-color)' 
+          borderRight: '1px solid var(--border-color)',
+          boxShadow: 'var(--shadow-lg)'
         }}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="p-6 border-b border-dark-700/50">
+          <div className="p-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--accent-primary)' }}
+                >
                   <Activity className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-display font-semibold gradient-text">RVU Dashboard</h1>
-                  <p className="text-xs text-dark-400">Productivity Analytics</p>
+                  <h1 className="text-lg font-display font-semibold" style={{ color: 'var(--accent-primary)' }}>
+                    RVU Dashboard
+                  </h1>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Productivity Analytics</p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="lg:hidden p-2 rounded-lg hover:bg-dark-800 transition-colors"
+                className="lg:hidden p-2 rounded-lg transition-colors interactive-item"
               >
-                <X className="w-5 h-5 text-dark-400" />
+                <X className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
               </button>
             </div>
           </div>
 
           {/* User Profile */}
           <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
-            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--accent-muted)' }}>
+            <div 
+              className="flex items-center gap-3 p-3 rounded-xl"
+              style={{ backgroundColor: 'var(--bg-tertiary)' }}
+            >
+              <div 
+                className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: 'var(--accent-muted)' }}
+              >
                 <User className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
               </div>
               <div className="flex-1 min-w-0">
@@ -267,12 +277,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
           {/* Security Notice */}
           <div className="px-4 py-3">
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <div 
+              className="p-3 rounded-xl"
+              style={{ 
+                backgroundColor: 'var(--warning-muted)', 
+                border: '1px solid var(--warning)',
+                borderColor: `color-mix(in srgb, var(--warning) 30%, transparent)`
+              }}
+            >
               <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} />
                 <div>
-                  <p className="text-xs text-amber-300/90 font-medium">Security Notice</p>
-                  <p className="text-xs text-amber-300/60 mt-0.5">
+                  <p className="text-xs font-medium" style={{ color: 'var(--warning)' }}>Security Notice</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
                     Do NOT include PHI or patient identifiers.
                   </p>
                 </div>
@@ -286,32 +303,46 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <div className="mb-4">
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-dark-800/50 transition-colors"
+                className="w-full flex items-center justify-between p-3 rounded-xl transition-colors interactive-item"
               >
                 <div className="flex items-center gap-3">
-                  <Target className="w-5 h-5 text-primary-400" />
-                  <span className="text-sm font-medium text-dark-200">Daily Goal</span>
+                  <Target className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Daily Goal</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono text-primary-400">{goalRvuPerDay}</span>
-                  <ChevronDown className={`w-4 h-4 text-dark-400 transition-transform ${showSettings ? 'rotate-180' : ''}`} />
+                  <span className="text-sm font-mono" style={{ color: 'var(--accent-primary)' }}>{goalRvuPerDay}</span>
+                  <ChevronDown 
+                    className={`w-4 h-4 transition-transform ${showSettings ? 'rotate-180' : ''}`}
+                    style={{ color: 'var(--text-muted)' }}
+                  />
                 </div>
               </button>
               {showSettings && (
-                <div className="mt-2 p-4 rounded-xl bg-dark-800/50 animate-slide-down">
-                  <label className="text-xs text-dark-400 block mb-2">RVUs per Day Target</label>
+                <div 
+                  className="mt-2 p-4 rounded-xl animate-slide-down"
+                  style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                >
+                  <label className="text-xs block mb-2" style={{ color: 'var(--text-muted)' }}>
+                    RVUs per Day Target
+                  </label>
                   <div className="flex gap-2">
                     <input
                       type="number"
                       value={localGoal}
                       onChange={(e) => setLocalGoal(Number(e.target.value))}
-                      className="flex-1 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-sm text-dark-100 focus:border-primary-500 outline-none"
+                      className="flex-1 px-3 py-2 rounded-lg text-sm outline-none transition-all"
+                      style={{ 
+                        backgroundColor: 'var(--bg-primary)', 
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-primary)'
+                      }}
                       min={0}
                       step={0.5}
                     />
                     <button
                       onClick={handleGoalUpdate}
-                      className="px-4 py-2 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition-colors"
+                      className="px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors"
+                      style={{ backgroundColor: 'var(--accent-primary)' }}
                     >
                       Save
                     </button>
@@ -323,42 +354,60 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             {/* Upload Data */}
             <button
               onClick={() => setShowUpload(!showUpload)}
-              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-dark-800/50 transition-colors"
+              className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors interactive-item"
             >
-              <Upload className="w-5 h-5 text-primary-400" />
-              <span className="text-sm font-medium text-dark-200">Upload Data</span>
-              <ChevronDown className={`w-4 h-4 text-dark-400 ml-auto transition-transform ${showUpload ? 'rotate-180' : ''}`} />
+              <Upload className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Upload Data</span>
+              <ChevronDown 
+                className={`w-4 h-4 ml-auto transition-transform ${showUpload ? 'rotate-180' : ''}`}
+                style={{ color: 'var(--text-muted)' }}
+              />
             </button>
             {showUpload && (
-              <div className="p-4 rounded-xl bg-dark-800/50 animate-slide-down">
+              <div 
+                className="p-4 rounded-xl animate-slide-down"
+                style={{ backgroundColor: 'var(--bg-tertiary)' }}
+              >
                 <FileUpload compact />
               </div>
             )}
 
             {/* Saved Data / Upload History - only show when there are actual records */}
             {records.length > 0 && uploadHistory.length > 0 && (
-              <div className="mt-2 p-3 rounded-xl bg-dark-800/80 border border-dark-700/50">
+              <div 
+                className="mt-2 p-3 rounded-xl"
+                style={{ 
+                  backgroundColor: 'var(--bg-tertiary)', 
+                  border: '1px solid var(--border-color)' 
+                }}
+              >
                 <div className="flex items-center gap-2 mb-3">
-                  <Database className="w-4 h-4 text-primary-400" />
-                  <span className="text-xs font-semibold text-dark-300 uppercase tracking-wide">Your Saved Data</span>
+                  <Database className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                    Your Saved Data
+                  </span>
                 </div>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {uploadHistory.map((upload) => (
                     <div 
                       key={upload.id}
-                      className="flex items-start gap-2 p-2 rounded-lg bg-dark-900/50 border border-dark-700/30 group"
+                      className="flex items-start gap-2 p-2 rounded-lg group"
+                      style={{ 
+                        backgroundColor: 'var(--bg-card)', 
+                        border: '1px solid var(--border-color)' 
+                      }}
                     >
-                      <FileSpreadsheet className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
+                      <FileSpreadsheet className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--accent-primary)' }} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-dark-200 truncate font-medium">
+                        <p className="text-xs truncate font-medium" style={{ color: 'var(--text-primary)' }}>
                           {upload.file_name}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-primary-400 font-medium">
+                          <span className="text-[10px] font-medium" style={{ color: 'var(--accent-primary)' }}>
                             {upload.records_imported?.toLocaleString() || 0} records
                           </span>
-                          <span className="text-[10px] text-dark-500">•</span>
-                          <span className="text-[10px] text-dark-500 flex items-center gap-1">
+                          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>•</span>
+                          <span className="text-[10px] flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
                             <Calendar className="w-3 h-3" />
                             {new Date(upload.uploaded_at).toLocaleDateString('en-US', {
                               month: 'short',
@@ -374,11 +423,15 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                           handleDeleteUpload(upload)
                         }}
                         disabled={deletingId === upload.id}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-400 transition-all disabled:opacity-50"
+                        className="p-1 rounded opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+                        style={{ color: 'var(--danger)' }}
                         title="Delete this upload"
                       >
                         {deletingId === upload.id ? (
-                          <div className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                          <div 
+                            className="w-3 h-3 border border-t-transparent rounded-full animate-spin"
+                            style={{ borderColor: 'var(--danger)' }}
+                          />
                         ) : (
                           <Trash2 className="w-3 h-3" />
                         )}
@@ -386,8 +439,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     </div>
                   ))}
                 </div>
-                <div className="mt-2 pt-2 border-t border-dark-700/30">
-                  <p className="text-[10px] text-dark-500 text-center">
+                <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
+                  <p className="text-[10px] text-center" style={{ color: 'var(--text-muted)' }}>
                     Total: {uploadHistory.reduce((sum, u) => sum + (u.records_imported || 0), 0).toLocaleString()} records from {uploadHistory.length} upload{uploadHistory.length !== 1 ? 's' : ''}
                   </p>
                 </div>
@@ -398,27 +451,43 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <button
               onClick={handleExportPDF}
               disabled={!metrics}
-              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-dark-800/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
             >
-              <FileText className="w-5 h-5 text-accent-400" />
-              <span className="text-sm font-medium text-dark-200">Export PDF Report</span>
+              <FileText className="w-5 h-5" style={{ color: 'var(--info)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export PDF Report</span>
             </button>
 
             {/* Export CSV */}
             <button
               onClick={handleExportCSV}
-              disabled={records.length === 0}
-              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-dark-800/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={records.length === 0 || loading}
+              className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
             >
-              <Download className="w-5 h-5 text-blue-400" />
-              <span className="text-sm font-medium text-dark-200">Export CSV Data</span>
+              <Download className="w-5 h-5" style={{ color: 'var(--info)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export CSV Data</span>
             </button>
+
+            {/* Reprocess Data */}
+            {records.length > 0 && (
+              <button
+                onClick={handleReprocessData}
+                disabled={reprocessing || loading}
+                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
+              >
+                <RefreshCw className={`w-5 h-5 ${reprocessing ? 'animate-spin' : ''}`} style={{ color: 'var(--warning)' }} />
+                <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  {reprocessing ? 'Reprocessing...' : 'Reprocess Classifications'}
+                </span>
+              </button>
+            )}
 
             {/* Clear Data */}
             {records.length > 0 && (
               <button
                 onClick={handleClearData}
-                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-500/10 text-red-400 transition-colors"
+                disabled={loading}
+                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50"
+                style={{ color: 'var(--danger)' }}
               >
                 <Trash2 className="w-5 h-5" />
                 <span className="text-sm font-medium">Clear All Data</span>
@@ -427,15 +496,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-dark-700/50">
-            <div className="text-xs text-dark-500 mb-3 text-center">
+          <div className="p-4" style={{ borderTop: '1px solid var(--border-color)' }}>
+            <div className="text-xs text-center mb-3" style={{ color: 'var(--text-muted)' }}>
               {records.length > 0 && (
                 <span>{records.length.toLocaleString()} records loaded</span>
               )}
             </div>
             <button
               onClick={signOut}
-              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dark-700 hover:bg-dark-800/50 text-dark-300 transition-colors"
+              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl transition-colors"
+              style={{ 
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-secondary)'
+              }}
             >
               <LogOut className="w-4 h-4" />
               <span className="text-sm">Sign Out</span>
@@ -446,4 +519,3 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     </>
   )
 }
-

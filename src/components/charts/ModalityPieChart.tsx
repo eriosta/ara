@@ -44,14 +44,28 @@ export default function ModalityPieChart() {
   }
 
   return (
-    <section className="chart-container animate-slide-up" style={{ animationDelay: '0.4s' }}>
+    <section 
+      className="p-5 rounded-xl animate-slide-up" 
+      style={{ 
+        backgroundColor: 'var(--bg-card)', 
+        border: '1px solid var(--border-color)',
+        animationDelay: '0.4s' 
+      }}
+    >
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-pink-500/10 flex items-center justify-center">
-          <PieChartIcon className="w-5 h-5 text-pink-400" />
+        <div 
+          className="w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(236, 72, 153, 0.1)' }}
+        >
+          <PieChartIcon className="w-5 h-5" style={{ color: '#ec4899' }} />
         </div>
         <div>
-          <h3 className="text-lg font-display font-semibold text-dark-100">RVUs by Modality</h3>
-          <p className="text-sm text-dark-400">Total: {total.toFixed(1)} RVUs</p>
+          <h3 className="text-lg font-display font-semibold" style={{ color: 'var(--text-primary)' }}>
+            RVUs by Modality
+          </h3>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Total: {total.toFixed(1)} RVUs
+          </p>
         </div>
       </div>
 
@@ -73,20 +87,20 @@ export default function ModalityPieChart() {
                 <Cell 
                   key={`cell-${index}`} 
                   fill={entry.color} 
-                  stroke="rgba(15, 23, 42, 0.5)"
+                  stroke="var(--bg-card)"
                   strokeWidth={2}
                 />
               ))}
             </Pie>
             <Tooltip 
               contentStyle={{
-                backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                border: '1px solid rgba(236, 72, 153, 0.2)',
-                borderRadius: '12px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                backgroundColor: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                boxShadow: 'var(--shadow-lg)',
               }}
-              labelStyle={{ color: '#f1f5f9', fontWeight: 600 }}
-              itemStyle={{ color: '#94a3b8', fontSize: '12px' }}
+              labelStyle={{ color: 'var(--text-primary)', fontWeight: 600 }}
+              itemStyle={{ color: 'var(--text-secondary)', fontSize: '12px' }}
               formatter={(value: number) => [`${value.toFixed(1)} RVUs`, '']}
             />
           </PieChart>
@@ -101,8 +115,10 @@ export default function ModalityPieChart() {
               className="w-3 h-3 rounded-full flex-shrink-0" 
               style={{ backgroundColor: entry.color }}
             />
-            <span className="text-dark-400 truncate">{entry.name}</span>
-            <span className="text-dark-300 font-medium ml-auto">
+            <span className="truncate" style={{ color: 'var(--text-muted)' }}>
+              {entry.name}
+            </span>
+            <span className="font-medium ml-auto" style={{ color: 'var(--text-secondary)' }}>
               {entry.value.toFixed(1)}
             </span>
           </div>
@@ -111,4 +127,3 @@ export default function ModalityPieChart() {
     </section>
   )
 }
-

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
+import { useThemeStore } from '@/stores/themeStore'
 import AuthPage from '@/pages/AuthPage'
 import Dashboard from '@/pages/Dashboard'
 import LoadingScreen from '@/components/LoadingScreen'
@@ -35,10 +36,16 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { initialize } = useAuthStore()
+  const { theme } = useThemeStore()
 
   useEffect(() => {
     initialize()
   }, [initialize])
+
+  // Ensure theme is applied on mount
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -65,4 +72,3 @@ export default function App() {
     </div>
   )
 }
-
