@@ -245,27 +245,4 @@ export function processRawData(rawData: { dictation_datetime: string; exam_descr
     .filter(record => !isNaN(record.dictationDatetime.getTime()) && !isNaN(record.wrvuEstimate))
 }
 
-export function parseCSV(text: string): { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[] {
-  const lines = text.trim().split('\n')
-  if (lines.length < 2) return []
-
-  const headers = lines[0].split(/[,\t]/).map(h => h.trim().toLowerCase())
-  
-  const dtIdx = headers.findIndex(h => h.includes('dttm') || h.includes('datetime') || h.includes('date'))
-  const examIdx = headers.findIndex(h => h.includes('exam') && h.includes('desc'))
-  const rvuIdx = headers.findIndex(h => h.includes('wrvu') || h.includes('rvu'))
-
-  if (dtIdx === -1 || examIdx === -1 || rvuIdx === -1) {
-    throw new Error('Missing required columns: DICTATION DTTM, EXAM DESC, WRVU ESTIMATE')
-  }
-
-  return lines.slice(1).map(line => {
-    const cols = line.split(/[,\t]/)
-    return {
-      dictation_datetime: cols[dtIdx]?.trim() || '',
-      exam_description: cols[examIdx]?.trim() || '',
-      wrvu_estimate: parseFloat(cols[rvuIdx]?.trim() || '0'),
-    }
-  }).filter(row => row.dictation_datetime && row.exam_description)
-}
 

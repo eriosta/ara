@@ -2,154 +2,158 @@ import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
-import { parseCSV } from '@/lib/dataProcessing'
-import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react'
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, X, File } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface FileUploadProps {
   compact?: boolean
 }
 
+interface ProcessedFile {
+  name: string
+  rows: number
+  status: 'pending' | 'processing' | 'done' | 'error'
+  error?: string
+}
+
 export default function FileUpload({ compact = false }: FileUploadProps) {
   const { user } = useAuthStore()
   const { addRecords, loading } = useDataStore()
-  const [pastedData, setPastedData] = useState('')
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([])
   const [uploading, setUploading] = useState(false)
 
-  const processFile = useCallback(async (file: File) => {
-    if (!user) return
+  const processExcelFile = async (file: File): Promise<{ dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]> => {
+    const buffer = await file.arrayBuffer()
+    const workbook = XLSX.read(buffer, { type: 'array' })
+    const sheetName = workbook.SheetNames[0]
+    const worksheet = workbook.Sheets[sheetName]
+    
+    // Skip first 8 rows (metadata) like the old Python version
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 8 }) as (string | number | Date)[][]
+    
+    if (jsonData.length < 2) {
+      throw new Error('No data found in file')
+    }
+
+    // Find column indices
+    const headers = jsonData[0].map(h => String(h).toLowerCase().trim())
+    const dtIdx = headers.findIndex(h => h.includes('dttm') || h.includes('datetime') || h.includes('dictation'))
+    const examIdx = headers.findIndex(h => h.includes('exam') && h.includes('desc'))
+    const rvuIdx = headers.findIndex(h => h.includes('wrvu') || h.includes('rvu'))
+
+    if (dtIdx === -1 || examIdx === -1 || rvuIdx === -1) {
+      throw new Error(`Missing required columns. Found: ${headers.join(', ')}`)
+    }
+
+    // Process rows
+    const data = jsonData.slice(1)
+      .filter(row => row[dtIdx] && row[examIdx]) // Filter empty rows
+      .map(row => {
+        let dateValue = row[dtIdx]
+        
+        // Handle Excel date serial numbers
+        if (typeof dateValue === 'number') {
+          const excelDate = XLSX.SSF.parse_date_code(dateValue)
+          dateValue = `${excelDate.y}-${String(excelDate.m).padStart(2, '0')}-${String(excelDate.d).padStart(2, '0')} ${String(excelDate.H).padStart(2, '0')}:${String(excelDate.M).padStart(2, '0')}:${String(excelDate.S).padStart(2, '0')}`
+        }
+        
+        return {
+          dictation_datetime: String(dateValue),
+          exam_description: String(row[examIdx]),
+          wrvu_estimate: parseFloat(String(row[rvuIdx])) || 0,
+        }
+      })
+      .filter(row => row.dictation_datetime && row.exam_description && !isNaN(row.wrvu_estimate))
+
+    return data
+  }
+
+  const processAllFiles = async () => {
+    if (!user || selectedFiles.length === 0) return
 
     setUploading(true)
-    try {
-      let data: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[] = []
+    const allData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[] = []
+    const fileStatuses: ProcessedFile[] = selectedFiles.map(f => ({
+      name: f.name,
+      rows: 0,
+      status: 'pending' as const
+    }))
+    setProcessedFiles(fileStatuses)
 
-      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        // Excel file
-        const buffer = await file.arrayBuffer()
-        const workbook = XLSX.read(buffer, { type: 'array' })
-        const sheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[sheetName]
+    // Process each file
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i]
+      
+      // Update status to processing
+      setProcessedFiles(prev => prev.map((f, idx) => 
+        idx === i ? { ...f, status: 'processing' } : f
+      ))
+
+      try {
+        const data = await processExcelFile(file)
+        allData.push(...data)
         
-        // Skip first 8 rows (metadata) like the Python version
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 8 }) as string[][]
-        
-        if (jsonData.length < 2) {
-          throw new Error('No data found in file')
-        }
-
-        const headerRow = jsonData[0].map(h => String(h).toLowerCase())
-        const dtIdx = headerRow.findIndex(h => h.includes('dttm') || h.includes('datetime') || h.includes('date'))
-        const examIdx = headerRow.findIndex(h => h.includes('exam') && h.includes('desc'))
-        const rvuIdx = headerRow.findIndex(h => h.includes('wrvu') || h.includes('rvu'))
-
-        if (dtIdx === -1 || examIdx === -1 || rvuIdx === -1) {
-          throw new Error('Missing required columns: DICTATION DTTM, EXAM DESC, WRVU ESTIMATE')
-        }
-
-        data = jsonData.slice(1)
-          .filter(row => row[dtIdx] && row[examIdx])
-          .map(row => ({
-            dictation_datetime: String(row[dtIdx]),
-            exam_description: String(row[examIdx]),
-            wrvu_estimate: parseFloat(String(row[rvuIdx])) || 0,
-          }))
-
-      } else {
-        // CSV file
-        const text = await file.text()
-        const result = Papa.parse(text, { header: true, skipEmptyLines: true })
-        
-        if (result.errors.length > 0) {
-          console.warn('CSV parsing warnings:', result.errors)
-        }
-
-        const dtKey = Object.keys(result.data[0] || {}).find(h => 
-          h.toLowerCase().includes('dttm') || h.toLowerCase().includes('datetime') || h.toLowerCase().includes('date')
-        )
-        const examKey = Object.keys(result.data[0] || {}).find(h => 
-          h.toLowerCase().includes('exam') && h.toLowerCase().includes('desc')
-        )
-        const rvuKey = Object.keys(result.data[0] || {}).find(h => 
-          h.toLowerCase().includes('wrvu') || h.toLowerCase().includes('rvu')
-        )
-
-        if (!dtKey || !examKey || !rvuKey) {
-          throw new Error('Missing required columns: DICTATION DTTM, EXAM DESC, WRVU ESTIMATE')
-        }
-
-        data = (result.data as Record<string, string>[])
-          .filter(row => row[dtKey] && row[examKey])
-          .map(row => ({
-            dictation_datetime: row[dtKey],
-            exam_description: row[examKey],
-            wrvu_estimate: parseFloat(row[rvuKey]) || 0,
-          }))
+        // Update status to done
+        setProcessedFiles(prev => prev.map((f, idx) => 
+          idx === i ? { ...f, status: 'done', rows: data.length } : f
+        ))
+      } catch (error) {
+        // Update status to error
+        setProcessedFiles(prev => prev.map((f, idx) => 
+          idx === i ? { 
+            ...f, 
+            status: 'error', 
+            error: error instanceof Error ? error.message : 'Unknown error' 
+          } : f
+        ))
       }
-
-      if (data.length === 0) {
-        throw new Error('No valid data found in file')
-      }
-
-      const { error } = await addRecords(user.id, data)
-      if (error) {
-        throw error
-      }
-
-      toast.success(`Imported ${data.length} records!`)
-    } catch (error) {
-      console.error('File processing error:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to process file')
-    } finally {
-      setUploading(false)
     }
-  }, [user, addRecords])
+
+    // Upload combined data to Supabase
+    if (allData.length > 0) {
+      // Sort by date like the old Python version
+      allData.sort((a, b) => 
+        new Date(a.dictation_datetime).getTime() - new Date(b.dictation_datetime).getTime()
+      )
+
+      const { error } = await addRecords(user.id, allData)
+      if (error) {
+        toast.error('Failed to upload to database')
+      } else {
+        toast.success(`Successfully imported ${allData.length.toLocaleString()} records from ${selectedFiles.length} file(s)!`)
+        setSelectedFiles([])
+        setProcessedFiles([])
+      }
+    } else {
+      toast.error('No valid data found in the uploaded files')
+    }
+
+    setUploading(false)
+  }
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      processFile(acceptedFiles[0])
-    }
-  }, [processFile])
+    setSelectedFiles(prev => [...prev, ...acceptedFiles])
+    setProcessedFiles([])
+  }, [])
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index))
+  }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'text/csv': ['.csv'],
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
       'application/vnd.ms-excel': ['.xls'],
     },
-    maxFiles: 1,
     disabled: uploading || loading,
   })
 
-  const handlePastedData = async () => {
-    if (!user || !pastedData.trim()) return
-
-    setUploading(true)
-    try {
-      const data = parseCSV(pastedData)
-      if (data.length === 0) {
-        throw new Error('No valid data found')
-      }
-
-      const { error } = await addRecords(user.id, data)
-      if (error) {
-        throw error
-      }
-
-      toast.success(`Imported ${data.length} records!`)
-      setPastedData('')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to process data')
-    } finally {
-      setUploading(false)
-    }
-  }
-
   if (compact) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div
           {...getRootProps()}
           className={`
@@ -165,31 +169,46 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
           <div className="text-center">
             <Upload className="w-6 h-6 mx-auto text-dark-400 mb-2" />
             <p className="text-sm text-dark-300">
-              Drop file or click
+              Drop Excel files or click
             </p>
             <p className="text-xs text-dark-500 mt-1">
-              CSV, XLSX
+              Multiple .xlsx files supported
             </p>
           </div>
         </div>
 
-        <div className="relative">
-          <textarea
-            value={pastedData}
-            onChange={(e) => setPastedData(e.target.value)}
-            placeholder="Or paste CSV data here..."
-            className="w-full h-20 px-3 py-2 text-xs rounded-lg bg-dark-900 border border-dark-600 text-dark-200 placeholder-dark-500 resize-none focus:border-primary-500 outline-none"
-          />
-          {pastedData && (
+        {/* Selected files list */}
+        {selectedFiles.length > 0 && (
+          <div className="space-y-2">
+            {selectedFiles.map((file, i) => {
+              const processed = processedFiles[i]
+              return (
+                <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-dark-800/50 text-xs">
+                  <File className="w-4 h-4 text-primary-400 flex-shrink-0" />
+                  <span className="truncate flex-1 text-dark-300">{file.name}</span>
+                  {processed?.status === 'done' && (
+                    <span className="text-primary-400">{processed.rows} rows</span>
+                  )}
+                  {processed?.status === 'error' && (
+                    <span className="text-red-400">Error</span>
+                  )}
+                  {!uploading && (
+                    <button onClick={() => removeFile(i)} className="p-1 hover:bg-dark-700 rounded">
+                      <X className="w-3 h-3 text-dark-400" />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
             <button
-              onClick={handlePastedData}
-              disabled={uploading}
-              className="absolute bottom-2 right-2 px-3 py-1 text-xs rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors disabled:opacity-50"
+              onClick={processAllFiles}
+              disabled={uploading || selectedFiles.length === 0}
+              className="w-full py-2 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition-colors disabled:opacity-50"
             >
-              Import
+              {uploading ? 'Processing...' : `Import ${selectedFiles.length} File${selectedFiles.length > 1 ? 's' : ''}`}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -202,7 +221,7 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
         </div>
         <div>
           <h3 className="text-xl font-display font-semibold text-dark-100">Upload Your Data</h3>
-          <p className="text-sm text-dark-400">Import CSV or Excel files with your RVU data</p>
+          <p className="text-sm text-dark-400">Import multiple Excel files - they'll be combined automatically</p>
         </div>
       </div>
 
@@ -222,57 +241,106 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
           {uploading ? (
             <>
               <div className="w-12 h-12 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-dark-200">Processing your data...</p>
+              <p className="text-dark-200">Processing your files...</p>
             </>
           ) : (
             <>
               <Upload className="w-12 h-12 mx-auto text-dark-400 mb-4" />
               <p className="text-lg text-dark-200 mb-2">
-                {isDragActive ? 'Drop your file here' : 'Drag & drop your file here'}
+                {isDragActive ? 'Drop your files here' : 'Drag & drop Excel files here'}
               </p>
               <p className="text-sm text-dark-400">
-                or click to browse • CSV, XLSX supported
+                or click to browse • Multiple .xlsx files supported
               </p>
             </>
           )}
         </div>
       </div>
 
-      <div className="my-6 flex items-center gap-4">
-        <div className="flex-1 h-px bg-dark-700" />
-        <span className="text-sm text-dark-500">OR</span>
-        <div className="flex-1 h-px bg-dark-700" />
-      </div>
+      {/* Selected files list */}
+      {selectedFiles.length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-sm font-semibold text-dark-200 mb-3 flex items-center gap-2">
+            <FileSpreadsheet className="w-4 h-4 text-primary-400" />
+            Selected Files ({selectedFiles.length})
+          </h4>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {selectedFiles.map((file, i) => {
+              const processed = processedFiles[i]
+              return (
+                <div 
+                  key={i} 
+                  className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                    processed?.status === 'error' 
+                      ? 'bg-red-500/10 border border-red-500/20' 
+                      : processed?.status === 'done'
+                      ? 'bg-primary-500/10 border border-primary-500/20'
+                      : 'bg-dark-800/50 border border-dark-700/30'
+                  }`}
+                >
+                  <File className={`w-5 h-5 flex-shrink-0 ${
+                    processed?.status === 'error' ? 'text-red-400' :
+                    processed?.status === 'done' ? 'text-primary-400' :
+                    'text-dark-400'
+                  }`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-dark-200 truncate">{file.name}</p>
+                    <p className="text-xs text-dark-500">
+                      {processed?.status === 'processing' && 'Processing...'}
+                      {processed?.status === 'done' && `${processed.rows.toLocaleString()} records`}
+                      {processed?.status === 'error' && (
+                        <span className="text-red-400">{processed.error}</span>
+                      )}
+                      {!processed && `${(file.size / 1024).toFixed(1)} KB`}
+                    </p>
+                  </div>
+                  {processed?.status === 'done' && (
+                    <CheckCircle className="w-5 h-5 text-primary-400 flex-shrink-0" />
+                  )}
+                  {processed?.status === 'processing' && (
+                    <div className="w-5 h-5 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin flex-shrink-0" />
+                  )}
+                  {!uploading && !processed && (
+                    <button 
+                      onClick={() => removeFile(i)} 
+                      className="p-1.5 rounded-lg hover:bg-dark-700 transition-colors"
+                    >
+                      <X className="w-4 h-4 text-dark-400" />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
 
-      <div>
-        <label className="text-sm text-dark-300 mb-2 block">Paste CSV Data</label>
-        <textarea
-          value={pastedData}
-          onChange={(e) => setPastedData(e.target.value)}
-          placeholder="DICTATION DTTM,EXAM DESC,WRVU ESTIMATE&#10;2024-01-01 08:00:00,CT CHEST W/O CONTRAST,1.5&#10;..."
-          className="w-full h-32 px-4 py-3 rounded-xl bg-dark-900 border border-dark-600 text-dark-200 placeholder-dark-500 resize-none focus:border-primary-500 outline-none font-mono text-sm"
-        />
-        <button
-          onClick={handlePastedData}
-          disabled={uploading || !pastedData.trim()}
-          className="mt-3 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Import Pasted Data
-        </button>
-      </div>
+          <button
+            onClick={processAllFiles}
+            disabled={uploading || selectedFiles.length === 0}
+            className="mt-4 btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {uploading 
+              ? 'Processing & Uploading...' 
+              : `Import ${selectedFiles.length} File${selectedFiles.length > 1 ? 's' : ''} to Database`
+            }
+          </button>
+        </div>
+      )}
 
       {/* Required columns info */}
       <div className="mt-6 p-4 rounded-xl bg-dark-800/50 border border-dark-700">
         <h4 className="text-sm font-semibold text-dark-200 mb-3 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-amber-400" />
-          Required Columns
+          Expected Excel Format
         </h4>
+        <p className="text-xs text-dark-400 mb-3">
+          Files should be PS360 Resident Dictation Reports (header on row 9)
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="flex items-start gap-2">
             <CheckCircle className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-dark-200 font-medium">DICTATION DTTM</p>
-              <p className="text-dark-500">Date/time of dictation</p>
+              <p className="text-dark-500">Date/time column</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
@@ -294,4 +362,3 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
     </div>
   )
 }
-
