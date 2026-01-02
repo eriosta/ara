@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
-import { useThemeStore } from '@/stores/themeStore'
 import { supabase } from '@/lib/supabase'
 import { 
-  Activity, X, LogOut, Upload, Target, 
+  X, LogOut, Upload, Target, 
   FileText, Trash2, ChevronDown, User, AlertCircle,
-  FileSpreadsheet, Calendar, Database, Download, Sun, Moon, RefreshCw
+  FileSpreadsheet, Calendar, Database, Download
 } from 'lucide-react'
 import FileUpload from './FileUpload'
+import Logo from './Logo'
 import { generatePDF } from '@/lib/pdfExport'
 import toast from 'react-hot-toast'
 
@@ -27,13 +27,11 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, profile, signOut, updateProfile } = useAuthStore()
-  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, reprocessRecords, loading } = useDataStore()
-  const { theme, toggleTheme } = useThemeStore()
+  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading } = useDataStore()
   const [showSettings, setShowSettings] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [localGoal, setLocalGoal] = useState(goalRvuPerDay)
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
-  const [reprocessing, setReprocessing] = useState(false)
 
   // Fetch upload history
   const fetchUploadHistory = async () => {
@@ -164,30 +162,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     toast.success(`Exported ${records.length.toLocaleString()} records to CSV`, { id: 'export' })
   }
 
-  const handleReprocessData = async () => {
-    if (!user || records.length === 0) {
-      toast.error('No data to reprocess')
-      return
-    }
-
-    if (!window.confirm('Reprocess all records with updated classification logic? This will update modality, body part, and exam type for all records.')) {
-      return
-    }
-
-    setReprocessing(true)
-    toast.loading('Reprocessing records...', { id: 'reprocess' })
-
-    const { error, count } = await reprocessRecords(user.id)
-
-    setReprocessing(false)
-
-    if (error) {
-      toast.error('Failed to reprocess records', { id: 'reprocess' })
-    } else {
-      toast.success(`Reprocessed ${count.toLocaleString()} records`, { id: 'reprocess' })
-    }
-  }
-
   return (
     <>
       {/* Overlay */}
@@ -214,27 +188,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="p-6" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div className="p-5" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div 
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: 'var(--accent-primary)' }}
-                >
-                  <Activity className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-display font-semibold" style={{ color: 'var(--accent-primary)' }}>
-                    RVU Dashboard
-                  </h1>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Productivity Analytics</p>
-                </div>
-              </div>
+              <Logo size="md" />
               <button
                 onClick={onClose}
-                className="lg:hidden p-2 rounded-lg transition-colors interactive-item"
+                className="lg:hidden p-2 rounded-lg transition-colors hover:bg-slate-800"
               >
-                <X className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
+                <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
           </div>
@@ -242,36 +203,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           {/* User Profile */}
           <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <div 
-              className="flex items-center gap-3 p-3 rounded-xl"
-              style={{ backgroundColor: 'var(--bg-tertiary)' }}
+              className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50"
             >
-              <div 
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: 'var(--accent-muted)' }}
-              >
-                <User className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
+              <div className="w-9 h-9 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                <User className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                <p className="text-sm font-medium truncate text-slate-200">
                   {profile?.full_name || 'Resident'}
                 </p>
-                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-xs truncate text-slate-500">
                   {user?.email}
                 </p>
               </div>
-              {/* Theme Toggle */}
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-lg transition-colors"
-                style={{ backgroundColor: 'var(--bg-hover)' }}
-                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              >
-                {theme === 'dark' ? (
-                  <Sun className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
-                ) : (
-                  <Moon className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
-                )}
-              </button>
             </div>
           </div>
 
@@ -466,20 +410,6 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Download className="w-5 h-5" style={{ color: 'var(--info)' }} />
               <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export CSV Data</span>
             </button>
-
-            {/* Reprocess Data */}
-            {records.length > 0 && (
-              <button
-                onClick={handleReprocessData}
-                disabled={reprocessing || loading}
-                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
-              >
-                <RefreshCw className={`w-5 h-5 ${reprocessing ? 'animate-spin' : ''}`} style={{ color: 'var(--warning)' }} />
-                <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  {reprocessing ? 'Reprocessing...' : 'Reprocess Classifications'}
-                </span>
-              </button>
-            )}
 
             {/* Clear Data */}
             {records.length > 0 && (

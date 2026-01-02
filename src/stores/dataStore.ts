@@ -143,7 +143,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
-  // Reprocess all records with updated dataProcessing logic
+  // Reprocess all records with updated dataProcessing logic (parallel batches)
   reprocessRecords: async (userId: string) => {
     set({ loading: true })
     try {
@@ -157,23 +157,32 @@ export const useDataStore = create<DataState>((set, get) => ({
         return { error: fetchError as Error | null, count: 0 }
       }
 
-      // Reprocess each record with updated logic
+      // Process in parallel batches of 50
+      const batchSize = 50
       let updatedCount = 0
-      for (const record of data) {
-        const newModality = modalityFromDesc(record.exam_description)
-        const newExamType = examFromDesc(record.exam_description)
-        const newBodyPart = bodyPartsFromDesc(record.exam_description)
 
-        const { error: updateError } = await supabase
-          .from('rvu_records')
-          .update({
-            modality: newModality,
-            exam_type: newExamType,
-            body_part: newBodyPart,
+      for (let i = 0; i < data.length; i += batchSize) {
+        const batch = data.slice(i, i + batchSize)
+        
+        // Run batch updates in parallel
+        const results = await Promise.all(
+          batch.map(record => {
+            const newModality = modalityFromDesc(record.exam_description)
+            const newExamType = examFromDesc(record.exam_description)
+            const newBodyPart = bodyPartsFromDesc(record.exam_description)
+
+            return supabase
+              .from('rvu_records')
+              .update({
+                modality: newModality,
+                exam_type: newExamType,
+                body_part: newBodyPart,
+              })
+              .eq('id', record.id)
           })
-          .eq('id', record.id)
+        )
 
-        if (!updateError) updatedCount++
+        updatedCount += results.filter(r => !r.error).length
       }
 
       // Refresh records
@@ -195,6 +204,16 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     if (error || !data) {
       return null
+    }
+
+    // Helper to properly escape CSV fields (quote if contains comma, quote, or newline)
+    const escapeCSV = (value: string | null | undefined): string => {
+      const str = value || ''
+      // If the field contains comma, quote, or newline, wrap in quotes and escape internal quotes
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`
+      }
+      return str
     }
 
     // CSV headers
@@ -220,10 +239,10 @@ export const useDataStore = create<DataState>((set, get) => ({
         dateStr,
         timeStr,
         dayOfWeek,
-        `"${(record.exam_description || '').replace(/"/g, '""')}"`,
-        record.modality || '',
-        record.body_part || '',
-        record.exam_type || '',
+        escapeCSV(record.exam_description),
+        escapeCSV(record.modality),
+        escapeCSV(record.body_part),
+        escapeCSV(record.exam_type),
         (record.wrvu_estimate || 0).toFixed(2)
       ]
     })

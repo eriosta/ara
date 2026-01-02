@@ -1,24 +1,15 @@
-import { Activity } from 'lucide-react'
+import Logo from './Logo'
 
 export default function LoadingScreen() {
   return (
-    <div 
-      className="min-h-screen flex items-center justify-center"
-      style={{ backgroundColor: 'var(--bg-primary)' }}
-    >
-      <div className="text-center animate-fade-in">
-        <div 
-          className="w-14 h-14 rounded-xl flex items-center justify-center mx-auto mb-4"
-          style={{ backgroundColor: 'var(--accent-primary)' }}
-        >
-          <Activity className="w-7 h-7 text-white" />
+    <div className="min-h-screen flex items-center justify-center bg-slate-950">
+      <div className="text-center animate-fade-in flex flex-col items-center">
+        <Logo size="lg" showText={true} />
+        <div className="mt-6 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: '0.2s' }} />
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: '0.4s' }} />
         </div>
-        <h2 className="text-lg font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-          RVU Dashboard
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          Loading...
-        </p>
       </div>
     </div>
   )

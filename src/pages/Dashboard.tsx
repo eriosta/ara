@@ -32,30 +32,24 @@ export default function Dashboard() {
   const hasData = records.length > 0 && metrics
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="flex min-h-screen bg-slate-950">
       {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
-      <div className="flex-1 lg:ml-72" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <div className="flex-1 lg:ml-72 bg-slate-950">
         {/* Mobile Header */}
-        <header 
-          className="lg:hidden sticky top-0 z-40 px-4 py-3"
-          style={{ 
-            backgroundColor: 'var(--bg-secondary)', 
-            borderBottom: '1px solid var(--border-color)' 
-          }}
-        >
+        <header className="lg:hidden sticky top-0 z-40 px-4 py-3 bg-slate-900 border-b border-slate-800">
           <div className="flex items-center justify-between">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-xl transition-colors"
-              style={{ backgroundColor: 'var(--bg-hover)' }}
+              className="p-2 rounded-xl transition-colors bg-slate-800 hover:bg-slate-700"
             >
-              <Menu className="w-6 h-6" style={{ color: 'var(--text-secondary)' }} />
+              <Menu className="w-6 h-6 text-slate-400" />
             </button>
-            <h1 className="text-lg font-semibold" style={{ color: 'var(--accent-primary)' }}>
-              RVU Dashboard
+            <h1 className="text-lg font-display font-bold">
+              <span className="text-white">my</span>
+              <span className="text-emerald-400">RVU</span>
             </h1>
             <div className="w-10" />
           </div>
@@ -66,14 +60,8 @@ export default function Dashboard() {
           {loading && records.length === 0 ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <div 
-                  className="w-10 h-10 border-2 rounded-full animate-spin mx-auto mb-4"
-                  style={{ 
-                    borderColor: 'var(--border-color)', 
-                    borderTopColor: 'var(--accent-primary)' 
-                  }}
-                />
-                <p style={{ color: 'var(--text-muted)' }}>Loading your data...</p>
+                <div className="w-10 h-10 border-2 border-slate-700 border-t-emerald-400 rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-slate-500">Loading your data...</p>
               </div>
             </div>
           ) : !hasData ? (
