@@ -12,8 +12,16 @@ export interface SuggestedGoals {
   description: string       // Text description of recommendation
 }
 
+export interface DateTimeFilters {
+  startDate: string | null   // ISO date string YYYY-MM-DD
+  endDate: string | null     // ISO date string YYYY-MM-DD
+  startHour: number | null   // 0-23
+  endHour: number | null     // 0-23
+}
+
 interface DataState {
   records: RVURecord[]
+  filteredRecords: RVURecord[]
   metrics: ProcessedMetrics | null
   dailyData: DailyData[]
   hourlyData: HourlyData[]
@@ -23,7 +31,10 @@ interface DataState {
   loading: boolean
   goalRvuPerDay: number
   suggestedGoals: SuggestedGoals | null
+  filters: DateTimeFilters
   setGoalRvuPerDay: (goal: number) => void
+  setFilters: (filters: Partial<DateTimeFilters>) => void
+  clearFilters: () => void
   fetchRecords: (userId: string) => Promise<void>
   addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ error: Error | null }>
   clearRecords: (userId: string) => Promise<{ error: Error | null }>
@@ -44,8 +55,16 @@ function percentile(arr: number[], p: number): number {
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower)
 }
 
+const defaultFilters: DateTimeFilters = {
+  startDate: null,
+  endDate: null,
+  startHour: null,
+  endHour: null,
+}
+
 export const useDataStore = create<DataState>((set, get) => ({
   records: [],
+  filteredRecords: [],
   metrics: null,
   dailyData: [],
   hourlyData: [],
@@ -55,9 +74,21 @@ export const useDataStore = create<DataState>((set, get) => ({
   loading: false,
   goalRvuPerDay: 15,
   suggestedGoals: null,
+  filters: defaultFilters,
 
   setGoalRvuPerDay: (goal: number) => {
     set({ goalRvuPerDay: goal })
+    get().processData()
+  },
+
+  setFilters: (newFilters: Partial<DateTimeFilters>) => {
+    const currentFilters = get().filters
+    set({ filters: { ...currentFilters, ...newFilters } })
+    get().processData()
+  },
+
+  clearFilters: () => {
+    set({ filters: defaultFilters })
     get().processData()
   },
 
@@ -339,23 +370,57 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   processData: () => {
-    const { records, goalRvuPerDay } = get()
+    const { records, goalRvuPerDay, filters } = get()
     if (records.length === 0) {
+      set({ metrics: null, dailyData: [], hourlyData: [], caseMixData: [], modalityData: [], heatmapData: [], filteredRecords: [] })
+      return
+    }
+
+    // Apply filters
+    let filteredRecords = [...records]
+    
+    // Date range filter
+    if (filters.startDate) {
+      const startDate = new Date(filters.startDate)
+      startDate.setHours(0, 0, 0, 0)
+      filteredRecords = filteredRecords.filter(r => r.dictationDatetime >= startDate)
+    }
+    if (filters.endDate) {
+      const endDate = new Date(filters.endDate)
+      endDate.setHours(23, 59, 59, 999)
+      filteredRecords = filteredRecords.filter(r => r.dictationDatetime <= endDate)
+    }
+    
+    // Time range filter
+    if (filters.startHour !== null) {
+      filteredRecords = filteredRecords.filter(r => r.dictationDatetime.getHours() >= filters.startHour!)
+    }
+    if (filters.endHour !== null) {
+      filteredRecords = filteredRecords.filter(r => r.dictationDatetime.getHours() <= filters.endHour!)
+    }
+
+    // Store filtered records
+    set({ filteredRecords })
+
+    if (filteredRecords.length === 0) {
       set({ metrics: null, dailyData: [], hourlyData: [], caseMixData: [], modalityData: [], heatmapData: [] })
       return
     }
 
+    // Use filtered records for calculations
+    const activeRecords = filteredRecords
+
     // Calculate metrics
-    const totalRvu = records.reduce((sum, r) => sum + r.wrvuEstimate, 0)
-    const cases = records.length
+    const totalRvu = activeRecords.reduce((sum, r) => sum + r.wrvuEstimate, 0)
+    const cases = activeRecords.length
     const rvuPerCase = totalRvu / cases
 
-    const uniqueDates = new Set(records.map(r => r.dictationDatetime.toDateString()))
+    const uniqueDates = new Set(activeRecords.map(r => r.dictationDatetime.toDateString()))
     const daysWorked = uniqueDates.size
     const avgCasesDay = cases / daysWorked
     const avgRvuDay = totalRvu / daysWorked
 
-    const dates = records.map(r => r.dictationDatetime)
+    const dates = activeRecords.map(r => r.dictationDatetime)
     const minDate = new Date(Math.min(...dates.map(d => d.getTime())))
     const maxDate = new Date(Math.max(...dates.map(d => d.getTime())))
     const dateRange = Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
@@ -365,7 +430,7 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     // Daily data
     const dailyMap = new Map<string, number>()
-    records.forEach(r => {
+    activeRecords.forEach(r => {
       const dateStr = r.dictationDatetime.toDateString()
       dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + r.wrvuEstimate)
     })
@@ -399,7 +464,7 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     // Hourly data
     const hourlyMap = new Map<number, number>()
-    records.forEach(r => {
+    activeRecords.forEach(r => {
       const hour = r.dictationDatetime.getHours()
       hourlyMap.set(hour, (hourlyMap.get(hour) || 0) + r.wrvuEstimate)
     })
@@ -418,7 +483,7 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     // Case mix data
     const caseMixMap = new Map<string, { rvu: number; cases: number }>()
-    records.forEach(r => {
+    activeRecords.forEach(r => {
       const key = `${r.modality} - ${r.bodyPart}`
       const existing = caseMixMap.get(key) || { rvu: 0, cases: 0 }
       caseMixMap.set(key, { rvu: existing.rvu + r.wrvuEstimate, cases: existing.cases + 1 })
@@ -431,7 +496,7 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     // Modality data
     const modalityMap = new Map<string, number>()
-    records.forEach(r => {
+    activeRecords.forEach(r => {
       modalityMap.set(r.modality, (modalityMap.get(r.modality) || 0) + r.wrvuEstimate)
     })
 
@@ -442,7 +507,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     // Heatmap data
     const dowOrder = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     const heatmapMap = new Map<string, number>()
-    records.forEach(r => {
+    activeRecords.forEach(r => {
       const dow = dowOrder[r.dictationDatetime.getDay()]
       const hour = r.dictationDatetime.getHours()
       const key = `${dow}-${hour}`
@@ -460,7 +525,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       }
     })
 
-    const peakDow = records.reduce((acc, r) => {
+    const peakDow = activeRecords.reduce((acc, r) => {
       const dow = dowOrder[r.dictationDatetime.getDay()]
       acc[dow] = (acc[dow] || 0) + r.wrvuEstimate
       return acc

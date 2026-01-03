@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { 
   X, LogOut, Upload, Target, 
   FileText, Trash2, ChevronDown, User, AlertCircle,
-  FileSpreadsheet, Calendar, Database, Download
+  FileSpreadsheet, Calendar, Database, Download, Filter, Clock
 } from 'lucide-react'
 import FileUpload from './FileUpload'
 import Logo from './Logo'
@@ -27,12 +27,16 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, profile, signOut, updateProfile } = useAuthStore()
-  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading, suggestedGoals } = useDataStore()
+  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading, suggestedGoals, filters, setFilters, clearFilters, filteredRecords } = useDataStore()
   const [showSettings, setShowSettings] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
   const [localGoal, setLocalGoal] = useState(goalRvuPerDay)
   const [savingGoal, setSavingGoal] = useState(false)
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
+
+  // Check if any filters are active
+  const hasActiveFilters = filters.startDate || filters.endDate || filters.startHour !== null || filters.endHour !== null
 
   // Sync localGoal when profile loads or goalRvuPerDay changes
   useEffect(() => {
@@ -388,6 +392,143 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
                         Your average: <span style={{ color: 'var(--accent-primary)' }}>{suggestedGoals.currentAverage}</span> RVUs/day
                       </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Date/Time Filters */}
+            <div className="mb-2">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="w-full flex items-center justify-between p-3 rounded-xl transition-colors interactive-item"
+              >
+                <div className="flex items-center gap-3">
+                  <Filter className="w-5 h-5" style={{ color: hasActiveFilters ? 'var(--accent-primary)' : 'var(--text-muted)' }} />
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Filters</span>
+                  {hasActiveFilters && (
+                    <span 
+                      className="text-[10px] px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: 'var(--accent-primary)', color: 'white' }}
+                    >
+                      Active
+                    </span>
+                  )}
+                </div>
+                <ChevronDown 
+                  className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`}
+                  style={{ color: 'var(--text-muted)' }}
+                />
+              </button>
+              {showFilters && (
+                <div 
+                  className="mt-2 p-4 rounded-xl animate-slide-down space-y-4"
+                  style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                >
+                  {/* Date Range */}
+                  <div>
+                    <label className="text-xs flex items-center gap-2 mb-2" style={{ color: 'var(--text-muted)' }}>
+                      <Calendar className="w-3 h-3" />
+                      Date Range
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] block mb-1" style={{ color: 'var(--text-muted)' }}>From</label>
+                        <input
+                          type="date"
+                          value={filters.startDate || ''}
+                          onChange={(e) => setFilters({ startDate: e.target.value || null })}
+                          className="w-full px-2 py-1.5 rounded-lg text-xs outline-none"
+                          style={{ 
+                            backgroundColor: 'var(--bg-primary)', 
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-primary)'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] block mb-1" style={{ color: 'var(--text-muted)' }}>To</label>
+                        <input
+                          type="date"
+                          value={filters.endDate || ''}
+                          onChange={(e) => setFilters({ endDate: e.target.value || null })}
+                          className="w-full px-2 py-1.5 rounded-lg text-xs outline-none"
+                          style={{ 
+                            backgroundColor: 'var(--bg-primary)', 
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-primary)'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Time Range */}
+                  <div>
+                    <label className="text-xs flex items-center gap-2 mb-2" style={{ color: 'var(--text-muted)' }}>
+                      <Clock className="w-3 h-3" />
+                      Time Range (Hour)
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] block mb-1" style={{ color: 'var(--text-muted)' }}>From</label>
+                        <select
+                          value={filters.startHour ?? ''}
+                          onChange={(e) => setFilters({ startHour: e.target.value ? parseInt(e.target.value) : null })}
+                          className="w-full px-2 py-1.5 rounded-lg text-xs outline-none"
+                          style={{ 
+                            backgroundColor: 'var(--bg-primary)', 
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-primary)'
+                          }}
+                        >
+                          <option value="">Any</option>
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <option key={i} value={i}>
+                              {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] block mb-1" style={{ color: 'var(--text-muted)' }}>To</label>
+                        <select
+                          value={filters.endHour ?? ''}
+                          onChange={(e) => setFilters({ endHour: e.target.value ? parseInt(e.target.value) : null })}
+                          className="w-full px-2 py-1.5 rounded-lg text-xs outline-none"
+                          style={{ 
+                            backgroundColor: 'var(--bg-primary)', 
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-primary)'
+                          }}
+                        >
+                          <option value="">Any</option>
+                          {Array.from({ length: 24 }, (_, i) => (
+                            <option key={i} value={i}>
+                              {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filter Summary & Clear */}
+                  {hasActiveFilters && (
+                    <div className="pt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          Showing {filteredRecords.length} of {records.length} records
+                        </span>
+                        <button
+                          onClick={clearFilters}
+                          className="text-xs px-2 py-1 rounded-lg transition-colors"
+                          style={{ color: 'var(--accent-primary)' }}
+                        >
+                          Clear All
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
