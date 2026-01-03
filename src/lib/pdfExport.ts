@@ -16,10 +16,27 @@ interface PDFExportOptions {
 
 // Helper function to calculate insights from data
 function calculateInsights(dailyData: DailyData[], caseMixData: CaseMixData[], metrics: ProcessedMetrics, goalRvuPerDay: number) {
+  // Safety check
+  if (!dailyData || dailyData.length === 0) {
+    return {
+      currentStreak: 0,
+      longestStreak: 0,
+      last7Total: 0,
+      prev7Total: 0,
+      weekOverWeekChange: 0,
+      bestDow: null,
+      worstDow: null,
+      mostEfficient: null,
+      annualProjection: 0,
+      onPace: false,
+      paceGap: 0,
+    }
+  }
+
   // Current streak of meeting target
   let currentStreak = 0
   for (let i = dailyData.length - 1; i >= 0; i--) {
-    if (dailyData[i].meetsTarget) {
+    if (dailyData[i]?.meetsTarget) {
       currentStreak++
     } else {
       break
@@ -90,14 +107,23 @@ function calculateInsights(dailyData: DailyData[], caseMixData: CaseMixData[], m
 export function generatePDF(options: PDFExportOptions): void {
   const { 
     metrics, 
-    dailyData, 
-    caseMixData, 
-    modalityData, 
-    goalRvuPerDay, 
-    profileName,
+    dailyData = [], 
+    caseMixData = [], 
+    modalityData = [], 
+    goalRvuPerDay = 15, 
+    profileName = 'Resident',
     reportPeriodStart,
     reportPeriodEnd 
   } = options
+
+  // Validate required data
+  if (!metrics) {
+    throw new Error('No metrics data available')
+  }
+
+  if (dailyData.length === 0) {
+    throw new Error('No daily data available')
+  }
   
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -121,9 +147,9 @@ export function generatePDF(options: PDFExportOptions): void {
   const green = [56, 161, 105] as [number, number, number]
   const amber = [214, 158, 46] as [number, number, number]
 
-  // Report period
-  const periodStart = reportPeriodStart || (dailyData.length > 0 ? dailyData[0].date : '')
-  const periodEnd = reportPeriodEnd || (dailyData.length > 0 ? dailyData[dailyData.length - 1].date : '')
+  // Report period - with safety checks
+  const periodStart = reportPeriodStart || (dailyData.length > 0 && dailyData[0]?.date ? dailyData[0].date : format(new Date(), 'yyyy-MM-dd'))
+  const periodEnd = reportPeriodEnd || (dailyData.length > 0 && dailyData[dailyData.length - 1]?.date ? dailyData[dailyData.length - 1].date : format(new Date(), 'yyyy-MM-dd'))
 
   // ============ HEADER ============
   doc.setTextColor(...darkNavy)
@@ -141,10 +167,18 @@ export function generatePDF(options: PDFExportOptions): void {
   doc.text(profileName, margin, yPos)
 
   if (periodStart && periodEnd) {
-    doc.text(
-      `Period: ${format(new Date(periodStart), 'MMM d, yyyy')} - ${format(new Date(periodEnd), 'MMM d, yyyy')}`,
-      pageWidth - margin, yPos, { align: 'right' }
-    )
+    try {
+      const startDate = new Date(periodStart)
+      const endDate = new Date(periodEnd)
+      if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+        doc.text(
+          `Period: ${format(startDate, 'MMM d, yyyy')} - ${format(endDate, 'MMM d, yyyy')}`,
+          pageWidth - margin, yPos, { align: 'right' }
+        )
+      }
+    } catch {
+      // Skip period display if dates are invalid
+    }
   }
 
   yPos += 8

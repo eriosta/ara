@@ -135,15 +135,20 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       return
     }
     
-    generatePDF({
-      metrics,
-      dailyData,
-      caseMixData,
-      modalityData,
-      goalRvuPerDay,
-      profileName: profile?.full_name || 'Resident',
-    })
-    toast.success('PDF exported!')
+    try {
+      generatePDF({
+        metrics,
+        dailyData,
+        caseMixData,
+        modalityData,
+        goalRvuPerDay,
+        profileName: profile?.full_name || 'Resident',
+      })
+      toast.success('PDF downloaded!')
+    } catch (error) {
+      console.error('PDF export error:', error)
+      toast.error(`PDF export failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   const handleExportCSV = async () => {
