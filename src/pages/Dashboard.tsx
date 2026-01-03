@@ -15,19 +15,22 @@ export default function Dashboard() {
   const { user, profile, fetchProfile } = useAuthStore()
   const { records, metrics, fetchRecords, setGoalRvuPerDay, loading } = useDataStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [initialFetchDone, setInitialFetchDone] = useState(false)
 
+  // Only fetch once when user is available
   useEffect(() => {
-    if (user) {
+    if (user && !initialFetchDone) {
+      setInitialFetchDone(true)
       fetchRecords(user.id)
       fetchProfile()
     }
-  }, [user, fetchRecords, fetchProfile])
+  }, [user, initialFetchDone, fetchRecords, fetchProfile])
 
   useEffect(() => {
     if (profile?.goal_rvu_per_day) {
       setGoalRvuPerDay(profile.goal_rvu_per_day)
     }
-  }, [profile, setGoalRvuPerDay])
+  }, [profile?.goal_rvu_per_day, setGoalRvuPerDay])
 
   const hasData = records.length > 0 && metrics
 
