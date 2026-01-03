@@ -3,6 +3,15 @@ import { supabase } from '@/lib/supabase'
 import { processRawData, modalityFromDesc, examFromDesc, bodyPartsFromDesc, RVURecord, ProcessedMetrics, DailyData, HourlyData, CaseMixData } from '@/lib/dataProcessing'
 import { DEV_MODE, generateMockRecords } from '@/lib/mockData'
 
+export interface SuggestedGoals {
+  conservative: number      // 50th percentile (median)
+  moderate: number          // 65th percentile  
+  aggressive: number        // 80th percentile
+  stretch: number           // 90th percentile
+  currentAverage: number    // Current average
+  description: string       // Text description of recommendation
+}
+
 interface DataState {
   records: RVURecord[]
   metrics: ProcessedMetrics | null
@@ -13,13 +22,26 @@ interface DataState {
   heatmapData: { dow: string; hour: number; rvu: number }[]
   loading: boolean
   goalRvuPerDay: number
+  suggestedGoals: SuggestedGoals | null
   setGoalRvuPerDay: (goal: number) => void
   fetchRecords: (userId: string) => Promise<void>
   addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ error: Error | null }>
   clearRecords: (userId: string) => Promise<{ error: Error | null }>
   reprocessRecords: (userId: string) => Promise<{ error: Error | null; count: number }>
   exportCSVFromDB: (userId: string) => Promise<string | null>
+  calculateSuggestedGoals: () => SuggestedGoals | null
   processData: () => void
+}
+
+// Helper function to calculate percentile
+function percentile(arr: number[], p: number): number {
+  if (arr.length === 0) return 0
+  const sorted = [...arr].sort((a, b) => a - b)
+  const index = (p / 100) * (sorted.length - 1)
+  const lower = Math.floor(index)
+  const upper = Math.ceil(index)
+  if (lower === upper) return sorted[lower]
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower)
 }
 
 export const useDataStore = create<DataState>((set, get) => ({
@@ -32,10 +54,54 @@ export const useDataStore = create<DataState>((set, get) => ({
   heatmapData: [],
   loading: false,
   goalRvuPerDay: 15,
+  suggestedGoals: null,
 
   setGoalRvuPerDay: (goal: number) => {
     set({ goalRvuPerDay: goal })
     get().processData()
+  },
+
+  calculateSuggestedGoals: () => {
+    const { dailyData, metrics } = get()
+    
+    if (!dailyData || dailyData.length < 5 || !metrics) {
+      return null
+    }
+
+    // Get daily RVU values
+    const dailyRvus = dailyData.map(d => d.rvu)
+    
+    // Calculate percentiles
+    const p50 = percentile(dailyRvus, 50)  // Median
+    const p65 = percentile(dailyRvus, 65)  // Moderate stretch
+    const p80 = percentile(dailyRvus, 80)  // Aggressive
+    const p90 = percentile(dailyRvus, 90)  // Stretch goal
+    
+    // Determine recommendation based on current performance
+    let description = ''
+    const avg = metrics.avgRvuDay
+    
+    if (avg < p50) {
+      description = `Your average (${avg.toFixed(1)}) is below your median day. The "Moderate" goal would help you reach more consistent performance.`
+    } else if (avg < p65) {
+      description = `You're performing well! The "Moderate" goal (${p65.toFixed(1)}) represents your better days and is achievable with focus.`
+    } else if (avg < p80) {
+      description = `Strong performance! Consider the "Aggressive" goal (${p80.toFixed(1)}) to push your top-end productivity.`
+    } else {
+      description = `Excellent! You're already performing at a high level. The "Stretch" goal (${p90.toFixed(1)}) would challenge your best days.`
+    }
+
+    const suggestedGoals: SuggestedGoals = {
+      conservative: Math.round(p50 * 2) / 2,  // Round to nearest 0.5
+      moderate: Math.round(p65 * 2) / 2,
+      aggressive: Math.round(p80 * 2) / 2,
+      stretch: Math.round(p90 * 2) / 2,
+      currentAverage: Math.round(avg * 2) / 2,
+      description,
+    }
+
+    set({ suggestedGoals })
+    return suggestedGoals
   },
 
   fetchRecords: async (userId: string) => {
@@ -421,6 +487,9 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
 
     set({ metrics, dailyData, hourlyData, caseMixData, modalityData, heatmapData })
+    
+    // Calculate suggested goals after data is processed
+    get().calculateSuggestedGoals()
   },
 }))
 

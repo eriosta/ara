@@ -27,7 +27,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, profile, signOut, updateProfile } = useAuthStore()
-  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading } = useDataStore()
+  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading, suggestedGoals } = useDataStore()
   const [showSettings, setShowSettings] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [localGoal, setLocalGoal] = useState(goalRvuPerDay)
@@ -286,35 +286,110 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               </button>
               {showSettings && (
                 <div 
-                  className="mt-2 p-4 rounded-xl animate-slide-down"
+                  className="mt-2 p-4 rounded-xl animate-slide-down space-y-4"
                   style={{ backgroundColor: 'var(--bg-tertiary)' }}
                 >
-                  <label className="text-xs block mb-2" style={{ color: 'var(--text-muted)' }}>
-                    RVUs per Day Target
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      value={localGoal}
-                      onChange={(e) => setLocalGoal(Number(e.target.value))}
-                      className="flex-1 px-3 py-2 rounded-lg text-sm outline-none transition-all"
-                      style={{ 
-                        backgroundColor: 'var(--bg-primary)', 
-                        border: '1px solid var(--border-color)',
-                        color: 'var(--text-primary)'
-                      }}
-                      min={0}
-                      step={0.5}
-                    />
-                    <button
-                      onClick={handleGoalUpdate}
-                      disabled={savingGoal}
-                      className="px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-50"
-                      style={{ backgroundColor: 'var(--accent-primary)' }}
-                    >
-                      {savingGoal ? 'Saving...' : 'Save'}
-                    </button>
+                  <div>
+                    <label className="text-xs block mb-2" style={{ color: 'var(--text-muted)' }}>
+                      RVUs per Day Target
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={localGoal}
+                        onChange={(e) => setLocalGoal(Number(e.target.value))}
+                        className="w-24 px-3 py-2 rounded-lg text-sm outline-none transition-all"
+                        style={{ 
+                          backgroundColor: 'var(--bg-primary)', 
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-primary)'
+                        }}
+                        min={0}
+                        step={0.5}
+                      />
+                      <button
+                        onClick={handleGoalUpdate}
+                        disabled={savingGoal}
+                        className="flex-1 py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-50"
+                        style={{ backgroundColor: 'var(--accent-primary)' }}
+                      >
+                        {savingGoal ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Suggested Goals */}
+                  {suggestedGoals && (
+                    <div className="pt-3 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                      <label className="text-xs block mb-2" style={{ color: 'var(--text-muted)' }}>
+                        Suggested Goals (based on your data)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setLocalGoal(suggestedGoals.conservative)}
+                          className="p-2 rounded-lg text-left transition-all hover:scale-[1.02]"
+                          style={{ 
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: localGoal === suggestedGoals.conservative ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)'
+                          }}
+                        >
+                          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Conservative</div>
+                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                            {suggestedGoals.conservative}
+                          </div>
+                          <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>50th %ile</div>
+                        </button>
+                        <button
+                          onClick={() => setLocalGoal(suggestedGoals.moderate)}
+                          className="p-2 rounded-lg text-left transition-all hover:scale-[1.02]"
+                          style={{ 
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: localGoal === suggestedGoals.moderate ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)'
+                          }}
+                        >
+                          <div className="text-xs" style={{ color: 'var(--accent-primary)' }}>Moderate ✓</div>
+                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                            {suggestedGoals.moderate}
+                          </div>
+                          <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>65th %ile</div>
+                        </button>
+                        <button
+                          onClick={() => setLocalGoal(suggestedGoals.aggressive)}
+                          className="p-2 rounded-lg text-left transition-all hover:scale-[1.02]"
+                          style={{ 
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: localGoal === suggestedGoals.aggressive ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)'
+                          }}
+                        >
+                          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Aggressive</div>
+                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                            {suggestedGoals.aggressive}
+                          </div>
+                          <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>80th %ile</div>
+                        </button>
+                        <button
+                          onClick={() => setLocalGoal(suggestedGoals.stretch)}
+                          className="p-2 rounded-lg text-left transition-all hover:scale-[1.02]"
+                          style={{ 
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: localGoal === suggestedGoals.stretch ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)'
+                          }}
+                        >
+                          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Stretch</div>
+                          <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                            {suggestedGoals.stretch}
+                          </div>
+                          <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>90th %ile</div>
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[10px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                        {suggestedGoals.description}
+                      </p>
+                      <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                        Your average: <span style={{ color: 'var(--accent-primary)' }}>{suggestedGoals.currentAverage}</span> RVUs/day
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

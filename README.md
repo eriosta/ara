@@ -46,9 +46,9 @@ Upload files with these columns (column names are flexible):
 
 ### 1. Clone & Install
 
-```bash
-git clone <repository-url>
-cd ara
+   ```bash
+   git clone <repository-url>
+   cd ara
 npm install
 ```
 
@@ -132,7 +132,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 ### 4. Run Development Server
 
-```bash
+   ```bash
 npm run dev
 ```
 
