@@ -27,7 +27,7 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, profile, signOut, updateProfile } = useAuthStore()
-  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading, suggestedGoals, filters, setFilters, clearFilters, filteredRecords } = useDataStore()
+  const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading, suggestedGoals, filters, setFilters, clearFilters, filteredRecords, availableModalities, availableBodyParts } = useDataStore()
   const [showSettings, setShowSettings] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
@@ -36,7 +36,27 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
 
   // Check if any filters are active
-  const hasActiveFilters = filters.startDate || filters.endDate || filters.startHour !== null || filters.endHour !== null
+  const hasActiveFilters = filters.startDate || filters.endDate || filters.startHour !== null || filters.endHour !== null || filters.modalities.length > 0 || filters.bodyParts.length > 0
+
+  // Toggle modality selection
+  const toggleModality = (modality: string) => {
+    const current = filters.modalities
+    if (current.includes(modality)) {
+      setFilters({ modalities: current.filter(m => m !== modality) })
+    } else {
+      setFilters({ modalities: [...current, modality] })
+    }
+  }
+
+  // Toggle body part selection
+  const toggleBodyPart = (bodyPart: string) => {
+    const current = filters.bodyParts
+    if (current.includes(bodyPart)) {
+      setFilters({ bodyParts: current.filter(b => b !== bodyPart) })
+    } else {
+      setFilters({ bodyParts: [...current, bodyPart] })
+    }
+  }
 
   // Sync localGoal when profile loads or goalRvuPerDay changes
   useEffect(() => {
@@ -513,6 +533,84 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       </div>
                     </div>
                   </div>
+
+                  {/* Modality Filter */}
+                  {availableModalities.length > 0 && (
+                    <div>
+                      <label className="text-xs font-medium block mb-2" style={{ color: 'var(--text-secondary)' }}>
+                        Modality
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {availableModalities.map(modality => (
+                          <button
+                            key={modality}
+                            onClick={() => toggleModality(modality)}
+                            className={`px-2 py-1 text-[10px] rounded-md transition-all ${
+                              filters.modalities.includes(modality)
+                                ? 'bg-blue-500/30 text-blue-300 border-blue-500/50'
+                                : 'hover:bg-white/5'
+                            }`}
+                            style={{
+                              border: filters.modalities.includes(modality) 
+                                ? '1px solid rgba(59, 130, 246, 0.5)' 
+                                : '1px solid var(--border-color)',
+                              color: filters.modalities.includes(modality) ? undefined : 'var(--text-muted)'
+                            }}
+                          >
+                            {modality}
+                          </button>
+                        ))}
+                      </div>
+                      {filters.modalities.length > 0 && (
+                        <button
+                          onClick={() => setFilters({ modalities: [] })}
+                          className="text-[10px] mt-1.5 hover:underline"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          Clear modalities
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Body Part Filter */}
+                  {availableBodyParts.length > 0 && (
+                    <div>
+                      <label className="text-xs font-medium block mb-2" style={{ color: 'var(--text-secondary)' }}>
+                        Body Part
+                      </label>
+                      <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
+                        {availableBodyParts.map(bodyPart => (
+                          <button
+                            key={bodyPart}
+                            onClick={() => toggleBodyPart(bodyPart)}
+                            className={`px-2 py-1 text-[10px] rounded-md transition-all ${
+                              filters.bodyParts.includes(bodyPart)
+                                ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/50'
+                                : 'hover:bg-white/5'
+                            }`}
+                            style={{
+                              border: filters.bodyParts.includes(bodyPart) 
+                                ? '1px solid rgba(16, 185, 129, 0.5)' 
+                                : '1px solid var(--border-color)',
+                              color: filters.bodyParts.includes(bodyPart) ? undefined : 'var(--text-muted)'
+                            }}
+                          >
+                            {bodyPart}
+                          </button>
+                        ))}
+                      </div>
+                      {filters.bodyParts.length > 0 && (
+                        <button
+                          onClick={() => setFilters({ bodyParts: [] })}
+                          className="text-[10px] mt-1.5 hover:underline"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          Clear body parts
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {/* Filter Summary & Clear */}
                   {hasActiveFilters && (

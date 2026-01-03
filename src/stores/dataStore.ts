@@ -17,6 +17,8 @@ export interface DateTimeFilters {
   endDate: string | null     // ISO date string YYYY-MM-DD
   startHour: number | null   // 0-23
   endHour: number | null     // 0-23
+  modalities: string[]       // Selected modalities (empty = all)
+  bodyParts: string[]        // Selected body parts (empty = all)
 }
 
 interface DataState {
@@ -32,6 +34,8 @@ interface DataState {
   goalRvuPerDay: number
   suggestedGoals: SuggestedGoals | null
   filters: DateTimeFilters
+  availableModalities: string[]
+  availableBodyParts: string[]
   setGoalRvuPerDay: (goal: number) => void
   setFilters: (filters: Partial<DateTimeFilters>) => void
   clearFilters: () => void
@@ -60,6 +64,8 @@ const defaultFilters: DateTimeFilters = {
   endDate: null,
   startHour: null,
   endHour: null,
+  modalities: [],
+  bodyParts: [],
 }
 
 export const useDataStore = create<DataState>((set, get) => ({
@@ -75,6 +81,8 @@ export const useDataStore = create<DataState>((set, get) => ({
   goalRvuPerDay: 15,
   suggestedGoals: null,
   filters: defaultFilters,
+  availableModalities: [],
+  availableBodyParts: [],
 
   setGoalRvuPerDay: (goal: number) => {
     set({ goalRvuPerDay: goal })
@@ -376,6 +384,11 @@ export const useDataStore = create<DataState>((set, get) => ({
       return
     }
 
+    // Compute available modalities and body parts from all records (for filter dropdowns)
+    const allModalities = [...new Set(records.map(r => r.modality).filter(Boolean))].sort()
+    const allBodyParts = [...new Set(records.map(r => r.bodyPart).filter(Boolean))].sort()
+    set({ availableModalities: allModalities, availableBodyParts: allBodyParts })
+
     // Apply filters
     let filteredRecords = [...records]
     
@@ -397,6 +410,16 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
     if (filters.endHour !== null) {
       filteredRecords = filteredRecords.filter(r => r.dictationDatetime.getHours() <= filters.endHour!)
+    }
+
+    // Modality filter
+    if (filters.modalities.length > 0) {
+      filteredRecords = filteredRecords.filter(r => filters.modalities.includes(r.modality))
+    }
+
+    // Body part filter
+    if (filters.bodyParts.length > 0) {
+      filteredRecords = filteredRecords.filter(r => filters.bodyParts.includes(r.bodyPart))
     }
 
     // Store filtered records
