@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { DEV_MODE, mockUser, mockProfile } from '@/lib/mockData'
 
 interface Profile {
   id: string
@@ -33,6 +34,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initialize: async () => {
     try {
+      // Dev mode: bypass authentication with mock user
+      if (DEV_MODE) {
+        console.log('🔧 DEV MODE: Using mock user')
+        set({ user: mockUser, session: null, profile: mockProfile, initialized: true })
+        return
+      }
+
       const { data: { session } } = await supabase.auth.getSession()
       
       if (session?.user) {

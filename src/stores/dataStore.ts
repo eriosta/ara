@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { processRawData, modalityFromDesc, examFromDesc, bodyPartsFromDesc, RVURecord, ProcessedMetrics, DailyData, HourlyData, CaseMixData } from '@/lib/dataProcessing'
+import { DEV_MODE, generateMockRecords } from '@/lib/mockData'
 
 interface DataState {
   records: RVURecord[]
@@ -40,6 +41,23 @@ export const useDataStore = create<DataState>((set, get) => ({
   fetchRecords: async (userId: string) => {
     set({ loading: true })
     try {
+      // Dev mode: use generated mock data
+      if (DEV_MODE) {
+        const mockData = generateMockRecords()
+        const records: RVURecord[] = mockData.map(r => ({
+          id: r.id,
+          dictationDatetime: new Date(r.dictation_datetime),
+          examDescription: r.exam_description,
+          wrvuEstimate: Number(r.wrvu_estimate),
+          modality: r.modality || '',
+          examType: r.exam_type || '',
+          bodyPart: r.body_part || '',
+        }))
+        set({ records })
+        get().processData()
+        return
+      }
+
       const { data, error } = await supabase
         .from('rvu_records')
         .select('*')

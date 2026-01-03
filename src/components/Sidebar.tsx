@@ -31,7 +31,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [showSettings, setShowSettings] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [localGoal, setLocalGoal] = useState(goalRvuPerDay)
+  const [savingGoal, setSavingGoal] = useState(false)
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
+
+  // Sync localGoal when profile loads or goalRvuPerDay changes
+  useEffect(() => {
+    setLocalGoal(goalRvuPerDay)
+  }, [goalRvuPerDay])
 
   // Fetch upload history
   const fetchUploadHistory = async () => {
@@ -95,10 +101,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   }
 
   const handleGoalUpdate = async () => {
-    setGoalRvuPerDay(localGoal)
-    if (user) {
-      await updateProfile({ goal_rvu_per_day: localGoal })
-      toast.success('Goal updated')
+    if (!user) return
+    
+    setSavingGoal(true)
+    try {
+      setGoalRvuPerDay(localGoal)
+      const { error } = await updateProfile({ goal_rvu_per_day: localGoal })
+      if (error) {
+        toast.error('Failed to save goal')
+      } else {
+        toast.success('Daily goal saved!')
+      }
+    } finally {
+      setSavingGoal(false)
     }
   }
 
@@ -288,10 +303,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     />
                     <button
                       onClick={handleGoalUpdate}
-                      className="px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors"
+                      disabled={savingGoal}
+                      className="px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-50"
                       style={{ backgroundColor: 'var(--accent-primary)' }}
                     >
-                      Save
+                      {savingGoal ? 'Saving...' : 'Save'}
                     </button>
                   </div>
                 </div>

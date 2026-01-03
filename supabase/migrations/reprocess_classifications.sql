@@ -66,3 +66,4 @@ FROM rvu_records
 GROUP BY modality 
 ORDER BY count DESC;
 
+
