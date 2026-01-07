@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useDataStore } from '@/stores/dataStore'
+import { useAuthStore } from '@/stores/authStore'
 import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff, Copy, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
@@ -29,7 +30,8 @@ interface ModalityData {
 }
 
 export default function BreakdownPage() {
-  const { records, filteredRecords, falseDuplicates, clearFalseDuplicates } = useDataStore()
+  const { user } = useAuthStore()
+  const { records, filteredRecords, falseDuplicates, clearFalseDuplicates, checkForDuplicates } = useDataStore()
   
   // Filter states
   const [selectedModalities, setSelectedModalities] = useState<Set<string>>(new Set())
@@ -43,9 +45,17 @@ export default function BreakdownPage() {
   // Data quality view
   const [showDataQuality, setShowDataQuality] = useState(false)
   const [showDuplicates, setShowDuplicates] = useState(false)
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false)
 
   // Use filtered records if available, otherwise all records
   const activeRecords = filteredRecords.length > 0 ? filteredRecords : records
+
+  // Check for duplicates when page loads (only if we have records but no duplicates stored)
+  useEffect(() => {
+    if (user && records.length > 0 && falseDuplicates.length === 0) {
+      // Don't auto-check, let user click button if they want
+    }
+  }, [user, records.length, falseDuplicates.length])
 
   // Build hierarchical data structure
   const { 
@@ -420,8 +430,8 @@ export default function BreakdownPage() {
         )}
 
         {/* Duplicate Records */}
-        {falseDuplicates.length > 0 && (
-          <div className={`pt-4 ${dataQualityIssues.totalIssues === 0 ? 'mt-4 border-t border-slate-800' : ''}`}>
+        <div className={`pt-4 ${dataQualityIssues.totalIssues === 0 ? 'mt-4 border-t border-slate-800' : ''}`}>
+          {falseDuplicates.length > 0 ? (
             <button
               onClick={() => setShowDuplicates(!showDuplicates)}
               className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors ${
@@ -429,7 +439,7 @@ export default function BreakdownPage() {
               }`}
             >
               <div className="flex items-center gap-2">
-                <Copy className="w-4 h-4" />
+                <AlertCircle className="w-4 h-4" />
                 <span className="text-xs font-medium">Skipped Duplicates</span>
               </div>
               <div className="flex items-center gap-2">
@@ -437,8 +447,18 @@ export default function BreakdownPage() {
                 {showDuplicates ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
               </div>
             </button>
-          </div>
-        )}
+          ) : (
+            <div className="p-2 rounded-lg bg-slate-800/30 border border-slate-700">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertCircle className="w-3 h-3 text-slate-500" />
+                <span className="text-xs font-medium text-slate-400">Skipped Duplicates</span>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Duplicate records skipped during upload will appear here. Check after uploading files.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Content */}

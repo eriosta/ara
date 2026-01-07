@@ -51,6 +51,7 @@ interface DataState {
   clearFilters: () => void
   setFalseDuplicates: (duplicates: FalseDuplicate[]) => void
   clearFalseDuplicates: () => void
+  checkForDuplicates: (userId: string) => Promise<void>
   fetchRecords: (userId: string) => Promise<void>
   addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ 
     error: Error | null
@@ -132,6 +133,62 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   clearFalseDuplicates: () => {
     set({ falseDuplicates: [] })
+  },
+
+  checkForDuplicates: async (userId: string) => {
+    try {
+      // Get all records for this user
+      const { data: records, error } = await supabase
+        .from('rvu_records')
+        .select('dictation_datetime, exam_description, wrvu_estimate')
+        .eq('user_id', userId)
+        .order('dictation_datetime', { ascending: true })
+
+      if (error || !records || records.length === 0) {
+        set({ falseDuplicates: [] })
+        return
+      }
+
+      // Group records by timestamp
+      const timestampMap = new Map<string, Array<{ exam_description: string; wrvu_estimate: number }>>()
+      
+      records.forEach(r => {
+        const timestamp = r.dictation_datetime
+        if (!timestampMap.has(timestamp)) {
+          timestampMap.set(timestamp, [])
+        }
+        timestampMap.get(timestamp)!.push({
+          exam_description: r.exam_description,
+          wrvu_estimate: r.wrvu_estimate
+        })
+      })
+
+      // Find duplicates (timestamps with more than one record)
+      const duplicates: FalseDuplicate[] = []
+      
+      timestampMap.forEach((recordsAtTime, timestamp) => {
+        if (recordsAtTime.length > 1) {
+          // Multiple records at same timestamp - this shouldn't happen with current unique constraint
+          // But we'll show the first vs second as an example
+          const first = recordsAtTime[0]
+          const second = recordsAtTime[1]
+          
+          duplicates.push({
+            timestamp,
+            existingExam: first.exam_description,
+            newExam: second.exam_description,
+            existingRvu: first.wrvu_estimate,
+            newRvu: second.wrvu_estimate,
+            isFalseDuplicate: first.exam_description !== second.exam_description
+          })
+        }
+      })
+
+      set({ falseDuplicates: duplicates })
+    } catch (error) {
+      console.error('[checkForDuplicates] Error:', error)
+      set({ falseDuplicates: [] })
+    }
   },
 
   calculateSuggestedGoals: () => {
@@ -238,8 +295,7 @@ export const useDataStore = create<DataState>((set, get) => ({
           error: new Error(`Data processing failed: 0 of ${rawData.length} records were valid. This may be a date format issue.`),
           insertedCount: 0,
           processedCount: 0,
-          duplicatesSkipped: 0,
-          falseDuplicates: []
+          duplicatesSkipped: 0
         }
       }
       
@@ -253,78 +309,18 @@ export const useDataStore = create<DataState>((set, get) => ({
         body_part: r.bodyPart,
       }))
 
-      // Detect ALL duplicates that will be skipped (both true and false)
-      // Only check if reasonable number of records (< 1000)
-      const skippedDuplicates: Array<{
-        timestamp: string
-        existingExam: string
-        newExam: string
-        existingRvu: number
-        newRvu: number
-        isFalseDuplicate: boolean // true = different exam, false = same exam
-      }> = []
-
-      if (recordsToInsert.length < 1000) {
-        const timestamps = recordsToInsert.map(r => r.dictation_datetime)
-        
-        // Batch the query if needed (Supabase has limits on .in() size)
-        const batchSize = 200
-        const existingRecordsMap = new Map<string, { exam_description: string; wrvu_estimate: number }>()
-        
-        for (let i = 0; i < timestamps.length; i += batchSize) {
-          const batch = timestamps.slice(i, i + batchSize)
-          const { data: existingRecords } = await supabase
-            .from('rvu_records')
-            .select('dictation_datetime, exam_description, wrvu_estimate')
-            .eq('user_id', userId)
-            .in('dictation_datetime', batch)
-          
-          if (existingRecords) {
-            existingRecords.forEach(r => {
-              existingRecordsMap.set(r.dictation_datetime, r)
-            })
-          }
-        }
-
-        // Find all duplicates (existing records with matching timestamps)
-        for (const newRecord of recordsToInsert) {
-          const existing = existingRecordsMap.get(newRecord.dictation_datetime)
-          if (existing) {
-            skippedDuplicates.push({
-              timestamp: newRecord.dictation_datetime,
-              existingExam: existing.exam_description,
-              newExam: newRecord.exam_description,
-              existingRvu: existing.wrvu_estimate,
-              newRvu: newRecord.wrvu_estimate,
-              isFalseDuplicate: existing.exam_description !== newRecord.exam_description
-            })
-          }
-        }
-
-        if (skippedDuplicates.length > 0) {
-          const falseDups = skippedDuplicates.filter(d => d.isFalseDuplicate)
-          const trueDups = skippedDuplicates.filter(d => !d.isFalseDuplicate)
-          console.log(`[addRecords] Found ${skippedDuplicates.length} duplicates: ${trueDups.length} true duplicates, ${falseDups.length} conflicts (different exams)`)
-        }
-      } else {
-        console.log(`[addRecords] Skipping duplicate detection for ${recordsToInsert.length} records (too many)`)
-      }
-      
-      // Keep all duplicate info including the isFalseDuplicate flag
-      const falseDuplicates = skippedDuplicates
-
-      // Get count before insert to calculate duplicates
+      // Get count before insert
       const { count: beforeCount } = await supabase
         .from('rvu_records')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
 
-      // Use upsert to avoid duplicates - if same user+datetime exists, skip it
+      // Insert all records - database will handle duplicates via unique constraint
       const { error } = await supabase
         .from('rvu_records')
         .upsert(recordsToInsert, {
           onConflict: 'user_id,dictation_datetime',
-          ignoreDuplicates: true
+          ignoreDuplicates: true // Database will skip duplicates automatically
         })
 
       // Get count after insert
@@ -336,7 +332,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       const actuallyInserted = (afterCount || 0) - (beforeCount || 0)
       const duplicatesSkipped = processedRecords.length - actuallyInserted
 
-      console.log(`[addRecords] Upsert result: error=${error?.message || 'none'}, attempted=${recordsToInsert.length}, inserted=${actuallyInserted}, duplicates=${duplicatesSkipped}, falseDuplicates=${falseDuplicates.length}`)
+      console.log(`[addRecords] Upsert result: error=${error?.message || 'none'}, attempted=${recordsToInsert.length}, inserted=${actuallyInserted}, skipped=${duplicatesSkipped}`)
 
       if (!error) {
         await get().fetchRecords(userId)
@@ -347,8 +343,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         insertedCount: actuallyInserted,
         processedCount: processedRecords.length,
         duplicatesSkipped,
-        filteredOut,
-        falseDuplicates
+        filteredOut
       }
     } finally {
       set({ loading: false })

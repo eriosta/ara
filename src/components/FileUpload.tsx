@@ -26,7 +26,7 @@ interface UploadError {
 
 export default function FileUpload({ compact = false }: FileUploadProps) {
   const { user } = useAuthStore()
-  const { addRecords, loading, setFalseDuplicates, falseDuplicates } = useDataStore()
+  const { addRecords, loading } = useDataStore()
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([])
   const [uploading, setUploading] = useState(false)
@@ -173,7 +173,6 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
 
     setUploading(true)
     setUploadError(null) // Clear previous errors
-    setFalseDuplicates([]) // Clear previous false duplicates
     const allData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[] = []
     const fileStatuses: ProcessedFile[] = selectedFiles.map(f => ({
       name: f.name,
@@ -250,7 +249,6 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
         const inserted = result.insertedCount || 0
         const duplicates = result.duplicatesSkipped || 0
         const filtered = result.filteredOut || 0
-        const falseDups = result.falseDuplicates || []
         
         let message = `Added ${inserted.toLocaleString()} new records`
         const notes: string[] = []
@@ -259,17 +257,6 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
         
         if (notes.length > 0) {
           message += ` (${notes.join(', ')})`
-        }
-        
-        // Save false duplicates for display
-        if (falseDups.length > 0) {
-          setFalseDuplicates(falseDups)
-          toast(`⚠️ ${falseDups.length} potential conflicts found - different studies with same timestamp`, { 
-            duration: 8000,
-            icon: '⚠️'
-          })
-        } else {
-          setFalseDuplicates([])
         }
         
         toast.success(message, { duration: 5000 })
@@ -316,7 +303,6 @@ ${uploadError.details}
     setSelectedFiles(acceptedFiles)
     setProcessedFiles([])
     setUploadError(null) // Clear errors when new files are added
-    setFalseDuplicates([]) // Clear previous false duplicates
   }, [])
 
   const removeFile = (index: number) => {
@@ -431,55 +417,6 @@ ${uploadError.details}
           </div>
         )}
 
-        {/* False Duplicates Warning */}
-        {falseDuplicates.length > 0 && (
-          <div 
-            className="mt-3 p-3 rounded-xl text-xs"
-            style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgb(245, 158, 11)' }}
-          >
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-500" />
-                <span className="font-semibold text-amber-500">
-                  {falseDuplicates.length} Potential Conflicts
-                </span>
-              </div>
-              <button
-                onClick={() => setFalseDuplicates([])}
-                className="p-1 rounded hover:bg-amber-500/20"
-              >
-                <X className="w-3 h-3 text-amber-500" />
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-400 mb-2">
-              These records have the same timestamp as existing records but different descriptions. The new ones were skipped:
-            </p>
-            <div className="space-y-1.5 max-h-[150px] overflow-y-auto">
-              {falseDuplicates.slice(0, 10).map((fd, i) => (
-                <div key={i} className="p-2 rounded bg-slate-800/50 space-y-1">
-                  <div className="text-[10px] text-slate-500">
-                    {new Date(fd.timestamp).toLocaleString()}
-                  </div>
-                  <div className="flex gap-2 items-start">
-                    <span className="text-[9px] px-1 rounded bg-green-500/20 text-green-400">KEPT</span>
-                    <span className="text-slate-300 flex-1">{fd.existingExam}</span>
-                    <span className="text-emerald-400">{fd.existingRvu.toFixed(2)}</span>
-                  </div>
-                  <div className="flex gap-2 items-start">
-                    <span className="text-[9px] px-1 rounded bg-red-500/20 text-red-400">SKIP</span>
-                    <span className="text-slate-400 flex-1">{fd.newExam}</span>
-                    <span className="text-slate-500">{fd.newRvu.toFixed(2)}</span>
-                  </div>
-                </div>
-              ))}
-              {falseDuplicates.length > 10 && (
-                <div className="text-center text-slate-500 text-[10px] py-1">
-                  +{falseDuplicates.length - 10} more conflicts
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     )
   }
@@ -669,55 +606,6 @@ ${uploadError.details}
         </div>
       )}
 
-      {/* False Duplicates Warning */}
-      {falseDuplicates.length > 0 && (
-        <div 
-          className="mt-6 p-4 rounded-xl"
-          style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgb(245, 158, 11)' }}
-        >
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 flex-shrink-0 text-amber-500" />
-              <span className="font-semibold text-amber-500">
-                {falseDuplicates.length} Potential Timestamp Conflicts
-              </span>
-            </div>
-            <button
-              onClick={() => setFalseDuplicates([])}
-              className="p-1.5 rounded-lg hover:bg-amber-500/20 transition-colors"
-            >
-              <X className="w-4 h-4 text-amber-500" />
-            </button>
-          </div>
-          <p className="text-sm text-slate-400 mb-3">
-            These records have the same timestamp as existing records but different exam descriptions. 
-            The new records were skipped to avoid overwriting existing data.
-          </p>
-          <div className="space-y-2 max-h-[250px] overflow-y-auto">
-            {falseDuplicates.map((fd, i) => (
-              <div key={i} className="p-3 rounded-lg bg-slate-800/50 space-y-2">
-                <div className="text-xs text-slate-500 font-mono">
-                  📅 {new Date(fd.timestamp).toLocaleString()}
-                </div>
-                <div className="flex gap-2 items-start text-sm">
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 flex-shrink-0">KEPT</span>
-                  <span className="text-slate-300 flex-1">{fd.existingExam}</span>
-                  <span className="text-emerald-400 font-mono">{fd.existingRvu.toFixed(2)} RVU</span>
-                </div>
-                <div className="flex gap-2 items-start text-sm">
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 flex-shrink-0">SKIP</span>
-                  <span className="text-slate-400 flex-1">{fd.newExam}</span>
-                  <span className="text-slate-500 font-mono">{fd.newRvu.toFixed(2)} RVU</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-slate-500">
-            💡 This usually happens when multiple studies are dictated at the exact same second. 
-            Consider checking if these studies should be added separately.
-          </p>
-        </div>
-      )}
 
       {/* Required columns info */}
       <div 
