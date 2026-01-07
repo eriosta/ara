@@ -93,7 +93,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signUp: async (email: string, password: string, fullName: string, dataConsent: boolean) => {
     set({ loading: true })
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -103,6 +103,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           },
         },
       })
+      
+      // Check for duplicate email - Supabase returns a user with empty identities array
+      // when email already exists (to prevent email enumeration)
+      if (data?.user && data.user.identities && data.user.identities.length === 0) {
+        return { error: new Error('An account with this email already exists. Please sign in instead.') }
+      }
+      
+      // Also check for explicit error messages about existing users
+      if (error?.message?.toLowerCase().includes('already registered') || 
+          error?.message?.toLowerCase().includes('already exists')) {
+        return { error: new Error('An account with this email already exists. Please sign in instead.') }
+      }
+      
       return { error: error as Error | null }
     } finally {
       set({ loading: false })
