@@ -177,10 +177,12 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
   }
 
   const processAllFiles = async () => {
-    if (!user || selectedFiles.length === 0) return
+    // Prevent double-clicks and ensure we have files
+    if (!user || selectedFiles.length === 0 || uploading) return
 
     setUploading(true)
     setUploadError(null) // Clear previous errors
+    setFalseDuplicates([]) // Clear previous false duplicates
     const allData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[] = []
     const fileStatuses: ProcessedFile[] = selectedFiles.map(f => ({
       name: f.name,
@@ -319,9 +321,11 @@ ${uploadError.details}
   }
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    setSelectedFiles(prev => [...prev, ...acceptedFiles])
+    // Replace files instead of appending to avoid confusion
+    setSelectedFiles(acceptedFiles)
     setProcessedFiles([])
     setUploadError(null) // Clear errors when new files are added
+    setFalseDuplicates([]) // Clear previous false duplicates
   }, [])
 
   const removeFile = (index: number) => {
@@ -392,7 +396,7 @@ ${uploadError.details}
             })}
             <button
               onClick={processAllFiles}
-              disabled={uploading || selectedFiles.length === 0}
+              disabled={uploading || loading || selectedFiles.length === 0}
               className="w-full py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:opacity-50"
               style={{ backgroundColor: 'var(--accent-primary)' }}
             >

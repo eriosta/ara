@@ -232,17 +232,8 @@ export const useDataStore = create<DataState>((set, get) => ({
         body_part: r.bodyPart,
       }))
 
-      // Get timestamps we're trying to insert
-      const timestamps = recordsToInsert.map(r => r.dictation_datetime)
-      
-      // Fetch existing records with matching timestamps to detect false duplicates
-      const { data: existingRecords } = await supabase
-        .from('rvu_records')
-        .select('dictation_datetime, exam_description, wrvu_estimate')
-        .eq('user_id', userId)
-        .in('dictation_datetime', timestamps)
-
-      // Find false duplicates: same timestamp but different exam description
+      // Detect false duplicates (same timestamp, different exam)
+      // Only check a sample to avoid slow queries with thousands of timestamps
       const falseDuplicates: Array<{
         timestamp: string
         existingExam: string
@@ -250,29 +241,43 @@ export const useDataStore = create<DataState>((set, get) => ({
         existingRvu: number
         newRvu: number
       }> = []
-      
-      if (existingRecords) {
-        const existingMap = new Map(existingRecords.map(r => [r.dictation_datetime, r]))
+
+      // Only do false duplicate check if reasonable number of records (< 500)
+      // This avoids very slow .in() queries with thousands of timestamps
+      if (recordsToInsert.length < 500) {
+        const timestamps = recordsToInsert.map(r => r.dictation_datetime)
         
-        for (const newRecord of recordsToInsert) {
-          const existing = existingMap.get(newRecord.dictation_datetime)
-          if (existing && existing.exam_description !== newRecord.exam_description) {
-            falseDuplicates.push({
-              timestamp: newRecord.dictation_datetime,
-              existingExam: existing.exam_description,
-              newExam: newRecord.exam_description,
-              existingRvu: existing.wrvu_estimate,
-              newRvu: newRecord.wrvu_estimate
-            })
+        const { data: existingRecords } = await supabase
+          .from('rvu_records')
+          .select('dictation_datetime, exam_description, wrvu_estimate')
+          .eq('user_id', userId)
+          .in('dictation_datetime', timestamps)
+
+        if (existingRecords) {
+          const existingMap = new Map(existingRecords.map(r => [r.dictation_datetime, r]))
+          
+          for (const newRecord of recordsToInsert) {
+            const existing = existingMap.get(newRecord.dictation_datetime)
+            if (existing && existing.exam_description !== newRecord.exam_description) {
+              falseDuplicates.push({
+                timestamp: newRecord.dictation_datetime,
+                existingExam: existing.exam_description,
+                newExam: newRecord.exam_description,
+                existingRvu: existing.wrvu_estimate,
+                newRvu: newRecord.wrvu_estimate
+              })
+            }
           }
         }
-      }
 
-      if (falseDuplicates.length > 0) {
-        console.warn(`[addRecords] Found ${falseDuplicates.length} FALSE DUPLICATES (same timestamp, different exam):`)
-        falseDuplicates.slice(0, 5).forEach(fd => {
-          console.warn(`  ${fd.timestamp}: "${fd.existingExam}" vs "${fd.newExam}"`)
-        })
+        if (falseDuplicates.length > 0) {
+          console.warn(`[addRecords] Found ${falseDuplicates.length} FALSE DUPLICATES (same timestamp, different exam):`)
+          falseDuplicates.slice(0, 5).forEach(fd => {
+            console.warn(`  ${fd.timestamp}: "${fd.existingExam}" vs "${fd.newExam}"`)
+          })
+        }
+      } else {
+        console.log(`[addRecords] Skipping false duplicate check for ${recordsToInsert.length} records (too many)`)
       }
 
       // Get count before insert to calculate duplicates
