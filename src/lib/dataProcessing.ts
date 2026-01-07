@@ -1,5 +1,12 @@
-// Data processing utilities - IMPROVED VERSION
-// Fixed modality detection order and added comprehensive patterns
+// Data processing utilities - MAPPING-BASED CLASSIFICATION SYSTEM
+// Uses systematic rule-based classification from classificationMaps.ts
+
+import { 
+  MODALITY_RULES, 
+  BODY_PART_RULES, 
+  POST_PROCESSING_RULES,
+  applyClassificationRules 
+} from './classificationMaps'
 
 export interface RVURecord {
   id?: string
@@ -50,247 +57,12 @@ export interface CaseMixData {
   modality: string
 }
 
-// Body part patterns - EXPANDED with thyroid, parathyroid, lymphatic, maxillofacial
-const BODY_PART_PATTERNS: Record<string, RegExp> = {
-  'Head/Neck': /\b(HEAD|NECK|BRAIN|SKULL|ORBITS|FACIAL|SINUS|TEMPORAL|PITUITARY|CRANIAL|SKULL BASE|THYROID|PARATHYROID|DATSCAN|MAXILLOFACIAL)\b/i,
-  'Chest': /\b(CHEST|LUNG|THORAX|PULMONARY)\b/i,
-  'Abdomen': /\b(ABDOMEN|ABDOMINAL)\b/i,
-  'Pelvis': /\b(PELVIS|PELVIC)\b/i,
-  'Spine': /\b(SPINE|LUMBOSACRAL|L SPINE|T SPINE|C SPINE|CERVICAL|THORACIC|LUMBAR|SACRUM|COCCYX)\b/i,
-  'Upper Extremity': /\b(SHOULDER|ELBOW|WRIST|HAND|FINGER|HUMERUS|FOREARM|CLAVICLE|ARM)\b/i,
-  'Lower Extremity': /\b(HIP|KNEE|ANKLE|FOOT|TOE|FEMUR|TIBIA|FIBULA|THIGH|LEG)\b/i,
-  'Breast': /\b(BREAST|MAMMO)\b/i,
-  'Renal': /\b(RENAL|KIDNEY)\b/i,
-  'Cardiac': /\b(CARDIAC|HEART|ECHO)\b/i,
-  'Vascular': /\b(CAROTID|ARTERIAL|VENOUS|VEIN|ARTERY)\b/i,
-  'Liver': /\b(LIVER|HEPATOBILIARY|HEPATIC|HIDA)\b/i,
-  'Spleen': /\b(SPLEEN)\b/i,
-  'Stomach': /\b(STOMACH|GASTRIC|ESOPHAGUS|SWALLOW)\b/i,
-  'Whole Body': /\b(WHOLE BODY|BONE SCAN|TUMOR IMAGING|SKULL BASE.*MID THIGH|SKULL BASE.*THIGH|3 PHASE BONE)\b/i,
-  'Musculoskeletal': /\b(BONE\/JOINT|BONE JOINT|JOINT)\b/i,
-  'Lymphatic': /\b(SENTINEL NODE|LYMPH|LYMPHATIC)\b/i,
-}
-
 /**
  * Determines the imaging modality from exam description
- * IMPORTANT: Order matters! More specific patterns must come before general ones
+ * Uses systematic mapping-based classification rules
  */
 export function modalityFromDesc(s: string): string {
-  const t = s.toUpperCase()
-
-  // ========== NUCLEAR MEDICINE FIRST (highest priority) ==========
-  // NM prefix - catches "NM Bone/Joint", "NM Gastric", "NM Hida", "NM Injection", etc.
-  if (t.startsWith('NM ') || t.includes(' NM ')) {
-    return 'Nuclear Medicine'
-  }
-
-  // SPECT studies (before CT check since SPECT/CT should be NM)
-  if (t.includes('SPECT')) {
-    return 'Nuclear Medicine'
-  }
-
-  // DaTscan (dopamine transporter scan) - Nuclear Medicine
-  if (t.includes('DATSCAN') || t.includes('DAT SCAN')) {
-    return 'Nuclear Medicine'
-  }
-
-  // Thyroid nuclear studies (I-123, I-131, Tc-99m)
-  if ((t.includes('THYROID') || t.includes('PARATHYROID')) && 
-      (t.includes('I-123') || t.includes('I123') || t.includes('I-131') || 
-       t.includes('I131') || t.includes('UPTAKE') || t.includes('SCAN'))) {
-    // Check if it's actually an ultrasound
-    if (t.includes('ULTRASOUND') || t.includes('US ')) {
-      return 'US'
-    }
-    return 'Nuclear Medicine'
-  }
-
-  // HIDA / Hepatobiliary scans (before CT/CTA check)
-  if (t.includes('HIDA') || (t.includes('HEPATOBILIARY') && t.includes('IMAGING'))) {
-    return 'Nuclear Medicine'
-  }
-
-  // Bone scans (including injection, 3-phase) - before CT check
-  if (t.includes('BONE SCAN') || t.includes('3 PHASE BONE')) {
-    return 'Nuclear Medicine'
-  }
-
-  // Gastric emptying studies
-  if (t.includes('GASTRIC EMPTYING') || t.includes('GASTRIC EMPTY')) {
-    return 'Nuclear Medicine'
-  }
-
-  // Liver/spleen imaging (nuclear)
-  if (t.includes('LIVER AND SPLEEN IMAGING') || t.includes('LIVER SPLEEN')) {
-    return 'Nuclear Medicine'
-  }
-
-  // Lymphoscintigraphy
-  if (t.includes('LYMPHOSCINTIGRAPH') || t.includes('SENTINEL NODE')) {
-    return 'Nuclear Medicine'
-  }
-
-  // Nuclear Medicine treatments and procedures
-  if (t.includes('PLUVICTO') || (t.includes('THYROGEN') && t.includes('INJECTION'))) {
-    return 'Nuclear Medicine'
-  }
-
-  // 4D CT is technically a nuclear medicine study
-  if (t.includes('4D CT') || t.includes('4DCT')) {
-    return 'Nuclear Medicine'
-  }
-
-  // ========== PET IMAGING (before other NM terms since PET uses some similar terminology) ==========
-  // PET/CT - check for explicit PET/CT patterns
-  if (t.includes('PET/CT') || t.includes('PET CT') || t.includes('PET-CT') || t.includes('PET -')) {
-    return 'PET/CT'
-  }
-
-  // PET with concurrent CT (common phrasing for PET/CT studies)
-  if (t.includes('PET') && (t.includes('CONCURRENT CT') || t.includes('W/ CT') || t.includes('WITH CT'))) {
-    return 'PET/CT'
-  }
-
-  // PET tumor imaging is typically PET/CT
-  if (t.includes('PET') && t.includes('TUMOR IMAGING')) {
-    return 'PET/CT'
-  }
-
-  // PET alone (without CT)
-  if (t.includes('PET') || t.includes('POSITRON')) {
-    return 'PET/CT' // Most modern PET is PET/CT
-  }
-
-  // Other specific NM terms (after PET check)
-  const nmTerms = ['RENAL SCAN', 'MAG3', 'LASIX RENAL', 'LUNG VENT', 'PERF SCAN', 
-    'VQ SCAN', 'V/Q', 'GALLIUM', 'TAGGED RBC', 'BLEEDING SCAN', 'MECKEL',
-    'OCTREOTIDE', 'MIBG']
-  if (nmTerms.some(term => t.includes(term))) {
-    return 'Nuclear Medicine'
-  }
-
-  // ========== MRI VARIATIONS ==========
-  if (t.includes('MRI') || t.includes('MR ') || /\bMR\b/.test(t)) {
-    if (t.includes('MRA')) return 'MRA'
-    if (t.includes('MRV')) return 'MRV'
-    return 'MRI'
-  }
-
-  // ========== FLUOROSCOPY (before CT/US to catch FL procedures) ==========
-  // FL Lumbar Puncture is fluoroscopy, not CT
-  if (t.includes('FL ') && t.includes('LUMBAR PUNCTURE')) {
-    return 'Fluoroscopy'
-  }
-
-  // FL Esophagus/Esophagram is fluoroscopy, not US
-  if (t.includes('FL ') && (t.includes('ESOPHAG') || t.includes('SWALLOW'))) {
-    return 'Fluoroscopy'
-  }
-
-  // FL Access Portacath and Injection is fluoroscopy guided procedure, not CT
-  if (t.includes('FL ') && (t.includes('ACCESS') || t.includes('PORTACATH'))) {
-    return 'Fluoroscopy'
-  }
-
-  // ========== CT VARIATIONS ==========
-  if (t.includes('CT') || t.includes('CAT SCAN')) {
-    // CT with IV + rectal contrast should NOT be CTA
-    if (t.includes('RECTAL') && t.includes('CONTRAST')) {
-      return 'CT'
-    }
-    // Check for CTA (but exclude if it has rectal contrast)
-    if (t.includes('CTA')) return 'CTA'
-    return 'CT'
-  }
-
-  // ========== ULTRASOUND VARIATIONS ==========
-  if (t.includes('US ') || t.includes('ULTRASOUND') || t.includes('DUPLEX') || 
-      t.includes('DUP ') || t.includes('SONOGRAM') || t.includes('SONO ')) {
-    if (t.includes('DUPLEX') || t.includes('DUP ')) return 'US - Duplex'
-    if (t.includes('OBSTETRICAL') || t.includes('PREGNANCY') || t.includes('OB ')) return 'US - Obstetrical'
-    if (t.includes('PROCEDURE') || t.includes('GUIDED')) return 'US Procedure'
-    return 'US'
-  }
-
-  // ========== FLUOROSCOPY (additional patterns) ==========
-  // Note: FL Lumbar Puncture and FL Esophagus are handled above before CT/US checks
-  if (t.includes('FL ') || t.includes('FLUORO') || t.includes('BARIUM') || 
-      t.includes('SP ') || t.includes('SWALLOW')) {
-    if (t.includes('DYNAMIC')) return 'Fluoroscopy - Dynamic'
-    if (t.includes('GUIDANCE')) return 'Fluoroscopy Guidance'
-    return 'Fluoroscopy'
-  }
-
-  // ========== MAMMOGRAPHY ==========
-  if (t.includes('MAMMO') || (t.includes('BREAST') && !t.includes('MRI'))) {
-    if (t.includes('PROCEDURE') || t.includes('BIOPSY') || t.includes('STEREO')) return 'Mammography Procedure'
-    return 'Mammography'
-  }
-
-  // ========== ECHOCARDIOGRAPHY ==========
-  if (t.includes('ECHO') && (t.includes('CARDIO') || t.includes('HEART'))) {
-    return 'Echocardiography'
-  }
-
-  // ========== X-RAY / RADIOGRAPHY ==========
-  const xrayTerms = ['XR ', 'X-RAY', 'XRAY', 'RADIOGRAPH']
-  if (xrayTerms.some(term => t.includes(term))) {
-    return 'Radiography'
-  }
-
-  // Implicit X-ray patterns (body part + views, no other modality specified)
-  const implicitXrayPatterns = [
-    /\b\d+\s*VIEWS?\b/i,  // "2 VIEWS", "3 VIEW"
-    /\bAP\b.*\b(LAT|LATERAL)\b/i,  // "AP LAT", "AP LATERAL"
-    /\b(PA|AP)\s*(AND|\/)\s*(LAT|LATERAL)\b/i,  // "PA/LAT", "AP AND LATERAL"
-    /\bPORTABLE\b/i,  // Portable studies are usually X-rays
-    /\b(SUNRISE|MERCHANT|TUNNEL)\b.*KNEE/i,  // Special knee views
-    /\bFLEX\s+AND\s+EXT/i,  // Flexion/extension views
-    /\bBENDING\s+VIEWS/i,  // Bending views
-  ]
-  
-  const bodyPartXrayTerms = ['CHEST', 'ABDOMEN', 'KNEE', 'HAND', 'FOOT', 'SHOULDER', 'ELBOW', 
-    'ANKLE', 'WRIST', 'HIP', 'FEMUR', 'TIBIA', 'HUMERUS', 'FINGER', 'TOE', 'SPINE', 'PELVIS', 
-    'CLAVICLE', 'RIBS', 'SINUS', 'TEMPORAL', 'FACIAL', 'ORBITS', 'SKULL', 'SACRUM', 'COCCYX',
-    'LUMBOSACRAL', 'KNEES']
-  
-  // Check for implicit X-ray patterns
-  if (implicitXrayPatterns.some(pattern => pattern.test(t))) {
-    // Make sure it's not explicitly another modality
-    if (!['CT', 'MRI', 'MR ', 'US ', 'ULTRASOUND', 'FLUORO', 'PET', 'SPECT', 'NM '].some(m => t.includes(m))) {
-      if (bodyPartXrayTerms.some(term => t.includes(term))) {
-        return 'Radiography'
-      }
-    }
-  }
-
-  // Bilateral studies with body parts (usually radiography)
-  if (t.includes('BILATERAL') && (t.includes('KNEE') || t.includes('KNEES') || t.includes('HIP') || t.includes('HIPS'))) {
-    if (!['CT', 'MRI', 'MR ', 'US ', 'ULTRASOUND', 'FLUORO', 'PET', 'SPECT', 'NM '].some(m => t.includes(m))) {
-      return 'Radiography'
-    }
-  }
-
-  // Standing studies (usually radiography)
-  if (t.includes('STANDING') && (t.includes('KNEE') || t.includes('HIP') || t.includes('SPINE'))) {
-    if (!['CT', 'MRI', 'MR ', 'US ', 'ULTRASOUND', 'FLUORO', 'PET', 'SPECT', 'NM '].some(m => t.includes(m))) {
-      return 'Radiography'
-    }
-  }
-
-  // ========== INVASIVE PROCEDURES ==========
-  if (t.includes('INVASIVE') || t.includes('BIOPSY') || t.includes('DRAINAGE') || 
-      t.includes('ASPIRATION') || t.includes('INJECTION PROC')) {
-    return 'Invasive'
-  }
-
-  // ========== CATCH-ALL NUCLEAR MEDICINE ==========
-  // Final check for any remaining NM patterns
-  if (t.includes('NUCLEAR MEDICINE') || t.includes('NUCLEAR MED')) {
-    return 'Nuclear Medicine'
-  }
-
-  return 'Other'
+  return applyClassificationRules(s, MODALITY_RULES)
 }
 
 /**
@@ -321,140 +93,44 @@ function regionCT(t: string): string {
 
 /**
  * Extracts body parts from exam description
+ * Uses systematic mapping-based classification rules
  */
 export function bodyPartsFromDesc(s: string): string {
-  const t = s.toUpperCase()
-  let found: string[] = []
-
-  // Check all patterns
-  for (const [name, pattern] of Object.entries(BODY_PART_PATTERNS)) {
-    if (pattern.test(t)) {
-      found.push(name)
-    }
-  }
-
-  // ========== SPECIAL HANDLING FOR NUCLEAR MEDICINE ==========
+  let result = applyClassificationRules(s, BODY_PART_RULES)
   
-  // Thyroid/Parathyroid studies
-  if (found.length === 0 && (t.includes('THYROID') || t.includes('PARATHYROID'))) {
-    found.push('Head/Neck')
-  }
-
-  // DaTscan - brain imaging
-  if (found.length === 0 && (t.includes('DATSCAN') || t.includes('DAT SCAN'))) {
-    found.push('Head/Neck')
-  }
-
-  // Renal scans
-  if (found.length === 0 && /\bRENAL|KIDNEY|MAG3\b/i.test(t)) {
-    found.push('Renal')
-  }
-
-  // Lung scans
-  if (found.length === 0 && /\bLUNG|VENT|PERF|V\/Q|VQ\b/i.test(t)) {
-    found.push('Chest')
-  }
-
-  // Bone scans - whole body
-  if (found.length === 0 && /\bBONE SCAN|3 PHASE BONE\b/i.test(t)) {
-    found.push('Whole Body')
-  }
-
-  // Hepatobiliary/HIDA
-  if (found.length === 0 && /\bHEPATOBILIARY|HIDA|LIVER|SPLEEN\b/i.test(t)) {
-    if (t.includes('SPLEEN')) {
-      found.push('Liver', 'Spleen')
-    } else {
-      found.push('Liver')
-    }
-  }
-
-  // Gastric emptying
-  if (found.length === 0 && /\bGASTRIC EMPTYING|STOMACH\b/i.test(t)) {
-    found.push('Stomach')
-  }
-
-  // Barium swallow/esophagus
-  if (found.length === 0 && /\bBARIUM SWALLOW|ESOPHAGUS\b/i.test(t)) {
-    found.push('Stomach')
-  }
-
-  // Sentinel node / lymphoscintigraphy - MUST come before bone scan/whole body checks
-  // NM Lymphoscintigraph should be Lymphatic, not Whole Body
-  if (/\bSENTINEL NODE|LYMPHOSCINTIGRAPH\b/i.test(t)) {
-    // Remove any Whole Body that might have been added
-    found = found.filter(p => p !== 'Whole Body')
-    if (!found.includes('Lymphatic')) {
-      found.push('Lymphatic')
-    }
-  }
-
-  // Bone/Joint limited studies
-  if (found.length === 0 && /\bBONE\/JOINT|BONE JOINT\b/i.test(t)) {
-    found.push('Musculoskeletal')
-  }
-
-  // ========== PET SCAN RANGES ==========
-  // Only add Whole Body if not already classified and not lymphoscintigraphy
-  if (/SKULL.*THIGH|SKULL.*MID|WHOLE BODY/i.test(t) && found.length === 0 && !t.includes('LYMPHOSCINTIGRAPH')) {
-    found.push('Whole Body')
-  }
-
-  // Brain PET
-  if (found.length === 0 && t.includes('PET') && (t.includes('BRAIN') || t.includes('DEMENTIA') || t.includes('AMYLOID'))) {
-    found.push('Head/Neck')
-  }
-
-  // ========== CT FALLBACK ==========
-  if (found.length === 0 && t.includes('CT')) {
+  // Handle special CT region detection
+  const t = s.toUpperCase()
+  if (result === 'CT Region' && t.includes('CT')) {
     const region = regionCT(t)
     if (region !== 'Other') {
-      if (region === 'Chest/Abdomen/Pelvis') found.push('Chest', 'Abdomen', 'Pelvis')
-      else if (region === 'Abdomen/Pelvis') found.push('Abdomen', 'Pelvis')
-      else found.push(region)
-    }
-  }
-
-  // ========== BILATERAL KNEES / LOWER EXTREMITY ==========
-  // Bilateral knee studies should be Lower Extremity
-  if (found.length === 0 && t.includes('BILATERAL') && (t.includes('KNEE') || t.includes('KNEES'))) {
-    found.push('Lower Extremity')
-  }
-
-  // ========== PET/CT BODY REGIONS ==========
-  // PET/CT studies can be classified into specific regions
-  // Allow multiple regions: Head/Neck, Lower Extremity, Whole Body
-  if (found.length === 0 && t.includes('PET')) {
-    // Brain PET is Head/Neck
-    if (t.includes('BRAIN') || t.includes('DEMENTIA') || t.includes('AMYLOID')) {
-      found.push('Head/Neck')
-    } else if (t.includes('LOWER EXTREMITY') || t.includes('LEG') || t.includes('THIGH')) {
-      // PET/CT for lower extremity
-      found.push('Lower Extremity')
+      if (region === 'Chest/Abdomen/Pelvis') result = 'Chest, Abdomen, Pelvis'
+      else if (region === 'Abdomen/Pelvis') result = 'Abdomen, Pelvis'
+      else result = region
     } else {
-      // Default to Whole Body for most PET/CT tumor imaging studies
-      found.push('Whole Body')
+      result = 'Unknown'
     }
   }
-
-  // ========== FINAL FALLBACKS ==========
-  if (found.length === 0) {
-    if (t.includes('CHEST')) found.push('Chest')
-    else if (/\bSCAN\b/.test(t) && (t.includes('WHOLE') || t.includes('BODY')) && !t.includes('LYMPHOSCINTIGRAPH')) {
-      found.push('Whole Body')
+  
+  // Handle multiple body parts (e.g., "Liver, Spleen")
+  let bodyParts = result.split(',').map(bp => bp.trim()).filter(Boolean)
+  
+  // Apply post-processing rules
+  const modality = modalityFromDesc(s)
+  for (const rule of POST_PROCESSING_RULES) {
+    if (rule.condition(modality, result, s)) {
+      const updated = rule.action(modality, result)
+      result = updated.bodyPart
+      bodyParts = result.split(',').map(bp => bp.trim()).filter(Boolean)
     }
-    // FL Access Portacath is Fluoroscopy, body part can be Vascular or left as is
-    // (handled by modality classification above)
   }
-
-  // ========== MERGE HEAD/NECK + VASCULAR ==========
-  // If both Head/Neck and Vascular are found, remove Vascular (merge into Head/Neck)
-  if (found.includes('Head/Neck') && found.includes('Vascular')) {
-    found = found.filter(p => p !== 'Vascular')
+  
+  // Merge Head/Neck + Vascular → Head/Neck
+  if (bodyParts.includes('Head/Neck') && bodyParts.includes('Vascular')) {
+    bodyParts = bodyParts.filter(p => p !== 'Vascular')
   }
-
+  
   // Deduplicate and return
-  const unique = [...new Set(found)]
+  const unique = [...new Set(bodyParts)]
   return unique.length > 0 ? unique.join(', ') : 'Unknown'
 }
 
