@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -28,7 +29,9 @@ interface ModalityData {
 }
 
 export default function BreakdownPage() {
-  const { records, filteredRecords } = useDataStore()
+  const { user } = useAuthStore()
+  const { records, filteredRecords, fetchRecords } = useDataStore()
+  const [initialFetchDone, setInitialFetchDone] = useState(false)
   
   // Filter states
   const [selectedModalities, setSelectedModalities] = useState<Set<string>>(new Set())
@@ -41,6 +44,14 @@ export default function BreakdownPage() {
   
   // Data quality view
   const [showDataQuality, setShowDataQuality] = useState(false)
+
+  // Fetch records when component mounts
+  useEffect(() => {
+    if (user && !initialFetchDone) {
+      setInitialFetchDone(true)
+      fetchRecords(user.id)
+    }
+  }, [user, initialFetchDone, fetchRecords])
 
   // Use filtered records if available, otherwise all records
   const activeRecords = filteredRecords.length > 0 ? filteredRecords : records

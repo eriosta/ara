@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import { ChevronRight, ChevronDown, ArrowLeft, Table2, Filter, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -25,11 +26,21 @@ interface ExpandedState {
 }
 
 export default function MatrixPage() {
-  const { records, filteredRecords } = useDataStore()
+  const { user } = useAuthStore()
+  const { records, filteredRecords, fetchRecords } = useDataStore()
+  const [initialFetchDone, setInitialFetchDone] = useState(false)
   const [expandedRows, setExpandedRows] = useState<ExpandedState>({})
   const [expandedCells, setExpandedCells] = useState<ExpandedState>({})
   const [selectedModality, setSelectedModality] = useState<string | null>(null)
   const [selectedBodyPart, setSelectedBodyPart] = useState<string | null>(null)
+
+  // Fetch records when component mounts
+  useEffect(() => {
+    if (user && !initialFetchDone) {
+      setInitialFetchDone(true)
+      fetchRecords(user.id)
+    }
+  }, [user, initialFetchDone, fetchRecords])
 
   // Use filtered records if available, otherwise use all records
   const activeRecords = filteredRecords.length > 0 ? filteredRecords : records
