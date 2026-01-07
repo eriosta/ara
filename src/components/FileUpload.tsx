@@ -244,7 +244,21 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
         })
         toast.error('Upload failed - see error details below')
       } else {
-        toast.success(`Successfully imported ${allData.length.toLocaleString()} records from ${selectedFiles.length} file(s)!`)
+        // Build detailed success message
+        const inserted = result.insertedCount || 0
+        const duplicates = result.duplicatesSkipped || 0
+        const filtered = result.filteredOut || 0
+        
+        let message = `Added ${inserted.toLocaleString()} new records`
+        const notes: string[] = []
+        if (duplicates > 0) notes.push(`${duplicates} duplicates skipped`)
+        if (filtered > 0) notes.push(`${filtered} invalid rows filtered`)
+        
+        if (notes.length > 0) {
+          message += ` (${notes.join(', ')})`
+        }
+        
+        toast.success(message, { duration: 5000 })
         setSelectedFiles([])
         setProcessedFiles([])
         setUploadError(null)

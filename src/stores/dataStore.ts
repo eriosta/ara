@@ -40,7 +40,13 @@ interface DataState {
   setFilters: (filters: Partial<DateTimeFilters>) => void
   clearFilters: () => void
   fetchRecords: (userId: string) => Promise<void>
-  addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ error: Error | null; insertedCount?: number }>
+  addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ 
+    error: Error | null
+    insertedCount?: number
+    processedCount?: number
+    duplicatesSkipped?: number
+    filteredOut?: number 
+  }>
   clearRecords: (userId: string) => Promise<{ error: Error | null }>
   reprocessRecords: (userId: string) => Promise<{ error: Error | null; count: number }>
   exportCSVFromDB: (userId: string) => Promise<string | null>
@@ -193,7 +199,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       console.log(`[addRecords] Processing ${rawData.length} raw records...`)
       
       const processedRecords = processRawData(rawData)
-      console.log(`[addRecords] After processing: ${processedRecords.length} valid records`)
+      const filteredOut = rawData.length - processedRecords.length
+      console.log(`[addRecords] After processing: ${processedRecords.length} valid records (${filteredOut} filtered out due to invalid data)`)
       
       // Check if processing filtered out all records
       if (processedRecords.length === 0 && rawData.length > 0) {
@@ -201,7 +208,9 @@ export const useDataStore = create<DataState>((set, get) => ({
         console.error('[addRecords] Sample raw record:', rawData[0])
         return { 
           error: new Error(`Data processing failed: 0 of ${rawData.length} records were valid. This may be a date format issue.`),
-          insertedCount: 0 
+          insertedCount: 0,
+          processedCount: 0,
+          duplicatesSkipped: 0
         }
       }
       
@@ -215,21 +224,42 @@ export const useDataStore = create<DataState>((set, get) => ({
         body_part: r.bodyPart,
       }))
 
-      // Use upsert to avoid duplicates - if same user+datetime exists, update it
+      // Get count before insert to calculate duplicates
+      const { count: beforeCount } = await supabase
+        .from('rvu_records')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+
+      // Use upsert to avoid duplicates - if same user+datetime exists, skip it
       const { error } = await supabase
         .from('rvu_records')
         .upsert(recordsToInsert, {
           onConflict: 'user_id,dictation_datetime',
-          ignoreDuplicates: true // Skip duplicates instead of updating
+          ignoreDuplicates: true
         })
 
-      console.log(`[addRecords] Upsert result: error=${error?.message || 'none'}, attempted=${recordsToInsert.length}`)
+      // Get count after insert
+      const { count: afterCount } = await supabase
+        .from('rvu_records')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+
+      const actuallyInserted = (afterCount || 0) - (beforeCount || 0)
+      const duplicatesSkipped = processedRecords.length - actuallyInserted
+
+      console.log(`[addRecords] Upsert result: error=${error?.message || 'none'}, attempted=${recordsToInsert.length}, inserted=${actuallyInserted}, duplicates=${duplicatesSkipped}`)
 
       if (!error) {
         await get().fetchRecords(userId)
       }
 
-      return { error: error as Error | null, insertedCount: recordsToInsert.length }
+      return { 
+        error: error as Error | null, 
+        insertedCount: actuallyInserted,
+        processedCount: processedRecords.length,
+        duplicatesSkipped,
+        filteredOut
+      }
     } finally {
       set({ loading: false })
     }
