@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import { supabase } from '@/lib/supabase'
 import { 
   X, LogOut, Upload, Target, 
   FileText, Trash2, ChevronDown, User, AlertCircle,
-  FileSpreadsheet, Calendar, Database, Download, Filter, Clock
+  FileSpreadsheet, Calendar, Database, Download, Filter, Clock,
+  LayoutDashboard, Table2
 } from 'lucide-react'
 import FileUpload from './FileUpload'
 import Logo from './Logo'
@@ -26,6 +28,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+  const location = useLocation()
   const { user, profile, signOut, updateProfile } = useAuthStore()
   const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading, suggestedGoals, filters, setFilters, clearFilters, filteredRecords, availableModalities, availableBodyParts } = useDataStore()
   const [showSettings, setShowSettings] = useState(false)
@@ -264,6 +267,39 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Navigation */}
+          <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
+              Navigation
+            </p>
+            <nav className="space-y-1">
+              <Link
+                to="/dashboard"
+                onClick={onClose}
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/dashboard' 
+                    ? 'bg-emerald-500/10 text-emerald-400' 
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                Dashboard
+              </Link>
+              <Link
+                to="/breakdown"
+                onClick={onClose}
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/breakdown' 
+                    ? 'bg-emerald-500/10 text-emerald-400' 
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <Table2 className="w-4 h-4" />
+                Study Breakdown
+              </Link>
+            </nav>
           </div>
 
           {/* Security Notice */}

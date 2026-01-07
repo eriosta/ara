@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import AuthPage from '@/pages/AuthPage'
 import Dashboard from '@/pages/Dashboard'
+import BreakdownPage from '@/pages/BreakdownPage'
 import LoadingScreen from '@/components/LoadingScreen'
 import toast from 'react-hot-toast'
 
@@ -124,6 +125,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/breakdown"
+          element={
+            <ProtectedRoute>
+              <BreakdownPage />
             </ProtectedRoute>
           }
         />
