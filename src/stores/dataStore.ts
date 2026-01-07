@@ -18,6 +18,7 @@ export interface FalseDuplicate {
   newExam: string
   existingRvu: number
   newRvu: number
+  isFalseDuplicate?: boolean // true = different exam (conflict), false = same exam (true duplicate)
 }
 
 export interface DateTimeFilters {
@@ -252,53 +253,65 @@ export const useDataStore = create<DataState>((set, get) => ({
         body_part: r.bodyPart,
       }))
 
-      // Detect false duplicates (same timestamp, different exam)
-      // Only check a sample to avoid slow queries with thousands of timestamps
-      const falseDuplicates: Array<{
+      // Detect ALL duplicates that will be skipped (both true and false)
+      // Only check if reasonable number of records (< 1000)
+      const skippedDuplicates: Array<{
         timestamp: string
         existingExam: string
         newExam: string
         existingRvu: number
         newRvu: number
+        isFalseDuplicate: boolean // true = different exam, false = same exam
       }> = []
 
-      // Only do false duplicate check if reasonable number of records (< 500)
-      // This avoids very slow .in() queries with thousands of timestamps
-      if (recordsToInsert.length < 500) {
+      if (recordsToInsert.length < 1000) {
         const timestamps = recordsToInsert.map(r => r.dictation_datetime)
         
-        const { data: existingRecords } = await supabase
-          .from('rvu_records')
-          .select('dictation_datetime, exam_description, wrvu_estimate')
-          .eq('user_id', userId)
-          .in('dictation_datetime', timestamps)
-
-        if (existingRecords) {
-          const existingMap = new Map(existingRecords.map(r => [r.dictation_datetime, r]))
+        // Batch the query if needed (Supabase has limits on .in() size)
+        const batchSize = 200
+        const existingRecordsMap = new Map<string, { exam_description: string; wrvu_estimate: number }>()
+        
+        for (let i = 0; i < timestamps.length; i += batchSize) {
+          const batch = timestamps.slice(i, i + batchSize)
+          const { data: existingRecords } = await supabase
+            .from('rvu_records')
+            .select('dictation_datetime, exam_description, wrvu_estimate')
+            .eq('user_id', userId)
+            .in('dictation_datetime', batch)
           
-          for (const newRecord of recordsToInsert) {
-            const existing = existingMap.get(newRecord.dictation_datetime)
-            if (existing && existing.exam_description !== newRecord.exam_description) {
-              falseDuplicates.push({
-                timestamp: newRecord.dictation_datetime,
-                existingExam: existing.exam_description,
-                newExam: newRecord.exam_description,
-                existingRvu: existing.wrvu_estimate,
-                newRvu: newRecord.wrvu_estimate
-              })
-            }
+          if (existingRecords) {
+            existingRecords.forEach(r => {
+              existingRecordsMap.set(r.dictation_datetime, r)
+            })
           }
         }
 
-        if (falseDuplicates.length > 0) {
-          console.warn(`[addRecords] Found ${falseDuplicates.length} FALSE DUPLICATES (same timestamp, different exam):`)
-          falseDuplicates.slice(0, 5).forEach(fd => {
-            console.warn(`  ${fd.timestamp}: "${fd.existingExam}" vs "${fd.newExam}"`)
-          })
+        // Find all duplicates (existing records with matching timestamps)
+        for (const newRecord of recordsToInsert) {
+          const existing = existingRecordsMap.get(newRecord.dictation_datetime)
+          if (existing) {
+            skippedDuplicates.push({
+              timestamp: newRecord.dictation_datetime,
+              existingExam: existing.exam_description,
+              newExam: newRecord.exam_description,
+              existingRvu: existing.wrvu_estimate,
+              newRvu: newRecord.wrvu_estimate,
+              isFalseDuplicate: existing.exam_description !== newRecord.exam_description
+            })
+          }
+        }
+
+        if (skippedDuplicates.length > 0) {
+          const falseDups = skippedDuplicates.filter(d => d.isFalseDuplicate)
+          const trueDups = skippedDuplicates.filter(d => !d.isFalseDuplicate)
+          console.log(`[addRecords] Found ${skippedDuplicates.length} duplicates: ${trueDups.length} true duplicates, ${falseDups.length} conflicts (different exams)`)
         }
       } else {
-        console.log(`[addRecords] Skipping false duplicate check for ${recordsToInsert.length} records (too many)`)
+        console.log(`[addRecords] Skipping duplicate detection for ${recordsToInsert.length} records (too many)`)
       }
+      
+      // Keep all duplicate info including the isFalseDuplicate flag
+      const falseDuplicates = skippedDuplicates
 
       // Get count before insert to calculate duplicates
       const { count: beforeCount } = await supabase

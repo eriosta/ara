@@ -607,59 +607,95 @@ export default function BreakdownPage() {
               </p>
 
               {/* Summary */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="p-3 rounded-lg bg-slate-800/50">
-                  <div className="text-xs text-slate-400">Records Skipped</div>
-                  <div className="text-lg font-bold text-red-400">{falseDuplicates.length}</div>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-800/50">
-                  <div className="text-xs text-slate-400">RVUs Lost</div>
-                  <div className="text-lg font-bold text-red-400">
-                    {falseDuplicates.reduce((sum, d) => sum + d.newRvu, 0).toFixed(1)}
+              {(() => {
+                const trueDuplicates = falseDuplicates.filter(d => d.existingExam === d.newExam)
+                const conflicts = falseDuplicates.filter(d => d.existingExam !== d.newExam)
+                const lostRvus = conflicts.reduce((sum, d) => sum + d.newRvu, 0)
+                
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div className="p-3 rounded-lg bg-slate-800/50">
+                      <div className="text-xs text-slate-400">Total Skipped</div>
+                      <div className="text-lg font-bold text-slate-300">{falseDuplicates.length}</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-600">
+                      <div className="text-xs text-slate-400">True Duplicates</div>
+                      <div className="text-lg font-bold text-slate-400">{trueDuplicates.length}</div>
+                      <div className="text-[10px] text-slate-500">Same study, already exists</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                      <div className="text-xs text-amber-400">⚠️ Conflicts</div>
+                      <div className="text-lg font-bold text-amber-400">{conflicts.length}</div>
+                      <div className="text-[10px] text-amber-400/70">Different study, same time</div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                      <div className="text-xs text-red-400">RVUs Lost</div>
+                      <div className="text-lg font-bold text-red-400">{lostRvus.toFixed(1)}</div>
+                      <div className="text-[10px] text-red-400/70">From conflicts only</div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                )
+              })()}
 
               {/* List of duplicates */}
               <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                {falseDuplicates.map((dup, i) => (
-                  <div key={i} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-                    <div className="text-xs text-slate-500 mb-2 font-mono">
-                      📅 {new Date(dup.timestamp).toLocaleString()}
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex gap-2 items-start">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30 flex-shrink-0">
-                          IN DB
+                {falseDuplicates.map((dup, i) => {
+                  const isConflict = dup.existingExam !== dup.newExam
+                  return (
+                    <div 
+                      key={i} 
+                      className={`p-3 rounded-lg border ${
+                        isConflict 
+                          ? 'bg-amber-500/5 border-amber-500/30' 
+                          : 'bg-slate-800/50 border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs text-slate-500 font-mono">
+                          📅 {new Date(dup.timestamp).toLocaleString()}
+                        </div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                          isConflict 
+                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' 
+                            : 'bg-slate-700 text-slate-400'
+                        }`}>
+                          {isConflict ? '⚠️ CONFLICT' : 'TRUE DUPLICATE'}
                         </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-slate-300 break-words">{dup.existingExam}</div>
-                          <div className="text-xs text-emerald-400 font-mono mt-0.5">{dup.existingRvu.toFixed(2)} RVU</div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex gap-2 items-start">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30 flex-shrink-0">
+                            IN DB
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-slate-300 break-words">{dup.existingExam}</div>
+                            <div className="text-xs text-emerald-400 font-mono mt-0.5">{dup.existingRvu.toFixed(2)} RVU</div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 items-start">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 flex-shrink-0">
+                            SKIPPED
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-slate-400 break-words">{dup.newExam}</div>
+                            <div className="text-xs text-slate-500 font-mono mt-0.5">{dup.newRvu.toFixed(2)} RVU</div>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex gap-2 items-start">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 flex-shrink-0">
-                          SKIPPED
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-slate-400 break-words">{dup.newExam}</div>
-                          <div className="text-xs text-slate-500 font-mono mt-0.5">{dup.newRvu.toFixed(2)} RVU</div>
+                      {isConflict && (
+                        <div className="mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/20">
+                          <div className="flex items-center gap-1 text-amber-400 text-xs">
+                            <AlertTriangle className="w-3 h-3" />
+                            <span className="font-medium">Data loss - different study was skipped!</span>
+                          </div>
+                          <div className="text-[10px] text-amber-400/80 mt-1">
+                            Two different studies dictated at the same second. The second one was not imported.
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
-                    {dup.existingExam !== dup.newExam && (
-                      <div className="mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/20">
-                        <div className="flex items-center gap-1 text-amber-400 text-xs">
-                          <AlertTriangle className="w-3 h-3" />
-                          <span className="font-medium">Different studies, same timestamp!</span>
-                        </div>
-                        <div className="text-[10px] text-amber-400/80 mt-1">
-                          This is likely a data loss - two different studies dictated at the same second.
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               <div className="mt-4 p-3 rounded-lg bg-slate-800/30 border border-slate-700">
