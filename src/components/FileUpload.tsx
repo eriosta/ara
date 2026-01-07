@@ -214,9 +214,10 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
         new Date(a.dictation_datetime).getTime() - new Date(b.dictation_datetime).getTime()
       )
 
-      const { error } = await addRecords(user.id, allData)
-      if (error) {
-        toast.error('Failed to upload to database')
+      const result = await addRecords(user.id, allData)
+      if (result.error) {
+        console.error('Upload error:', result.error)
+        toast.error(result.error.message || 'Failed to upload to database')
       } else {
         toast.success(`Successfully imported ${allData.length.toLocaleString()} records from ${selectedFiles.length} file(s)!`)
         setSelectedFiles([])

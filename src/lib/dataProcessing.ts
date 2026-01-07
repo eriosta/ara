@@ -399,6 +399,80 @@ export function examFromDesc(s: string): string {
 }
 
 /**
+ * Parses date strings in various formats, including "MM/DD/YYYY HH:MM:SS AM/PM"
+ * Safari and some mobile browsers are strict and don't support this format natively
+ */
+function parseDateTime(dateStr: string): Date {
+  if (!dateStr) return new Date(NaN)
+  
+  // Handle "MM/DD/YYYY HH:MM:SS AM/PM" format first (most common from Excel)
+  const amPmMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?$/i)
+  if (amPmMatch) {
+    const [, month, day, year, hourStr, min, sec, ampm] = amPmMatch
+    let hour = parseInt(hourStr, 10)
+    
+    if (ampm) {
+      const isPM = ampm.toUpperCase() === 'PM'
+      if (isPM && hour !== 12) hour += 12
+      if (!isPM && hour === 12) hour = 0
+    }
+    
+    return new Date(
+      parseInt(year, 10),
+      parseInt(month, 10) - 1,
+      parseInt(day, 10),
+      hour,
+      parseInt(min, 10),
+      parseInt(sec, 10)
+    )
+  }
+  
+  // Handle "MM/DD/YYYY HH:MM AM/PM" format (without seconds)
+  const amPmNoSecMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i)
+  if (amPmNoSecMatch) {
+    const [, month, day, year, hourStr, min, ampm] = amPmNoSecMatch
+    let hour = parseInt(hourStr, 10)
+    
+    if (ampm) {
+      const isPM = ampm.toUpperCase() === 'PM'
+      if (isPM && hour !== 12) hour += 12
+      if (!isPM && hour === 12) hour = 0
+    }
+    
+    return new Date(
+      parseInt(year, 10),
+      parseInt(month, 10) - 1,
+      parseInt(day, 10),
+      hour,
+      parseInt(min, 10),
+      0
+    )
+  }
+  
+  // Handle ISO-ish format "YYYY-MM-DD HH:MM:SS"
+  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/)
+  if (isoMatch) {
+    const [, year, month, day, hour, min, sec] = isoMatch
+    return new Date(
+      parseInt(year, 10),
+      parseInt(month, 10) - 1,
+      parseInt(day, 10),
+      parseInt(hour, 10),
+      parseInt(min, 10),
+      parseInt(sec, 10)
+    )
+  }
+  
+  // Try native parsing as fallback (works in Chrome, Firefox, Node.js)
+  const nativeDate = new Date(dateStr)
+  if (!isNaN(nativeDate.getTime())) {
+    return nativeDate
+  }
+  
+  return new Date(NaN)
+}
+
+/**
  * Processes raw CSV data into structured RVU records
  */
 export function processRawData(rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]): RVURecord[] {
@@ -406,8 +480,10 @@ export function processRawData(rawData: { dictation_datetime: string; exam_descr
     .filter(row => row.dictation_datetime && row.exam_description && !isNaN(row.wrvu_estimate))
     .map(row => {
       const examDesc = row.exam_description
+      const parsedDate = parseDateTime(row.dictation_datetime)
+      
       return {
-        dictationDatetime: new Date(row.dictation_datetime),
+        dictationDatetime: parsedDate,
         examDescription: examDesc,
         wrvuEstimate: Number(row.wrvu_estimate),
         modality: modalityFromDesc(examDesc),

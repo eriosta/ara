@@ -40,7 +40,7 @@ interface DataState {
   setFilters: (filters: Partial<DateTimeFilters>) => void
   clearFilters: () => void
   fetchRecords: (userId: string) => Promise<void>
-  addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ error: Error | null }>
+  addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ error: Error | null; insertedCount?: number }>
   clearRecords: (userId: string) => Promise<{ error: Error | null }>
   reprocessRecords: (userId: string) => Promise<{ error: Error | null; count: number }>
   exportCSVFromDB: (userId: string) => Promise<string | null>
@@ -190,7 +190,20 @@ export const useDataStore = create<DataState>((set, get) => ({
   addRecords: async (userId: string, rawData) => {
     set({ loading: true })
     try {
+      console.log(`[addRecords] Processing ${rawData.length} raw records...`)
+      
       const processedRecords = processRawData(rawData)
+      console.log(`[addRecords] After processing: ${processedRecords.length} valid records`)
+      
+      // Check if processing filtered out all records
+      if (processedRecords.length === 0 && rawData.length > 0) {
+        console.error('[addRecords] All records were filtered out during processing!')
+        console.error('[addRecords] Sample raw record:', rawData[0])
+        return { 
+          error: new Error(`Data processing failed: 0 of ${rawData.length} records were valid. This may be a date format issue.`),
+          insertedCount: 0 
+        }
+      }
       
       const recordsToInsert = processedRecords.map(r => ({
         user_id: userId,
@@ -210,11 +223,13 @@ export const useDataStore = create<DataState>((set, get) => ({
           ignoreDuplicates: true // Skip duplicates instead of updating
         })
 
+      console.log(`[addRecords] Upsert result: error=${error?.message || 'none'}, attempted=${recordsToInsert.length}`)
+
       if (!error) {
         await get().fetchRecords(userId)
       }
 
-      return { error: error as Error | null }
+      return { error: error as Error | null, insertedCount: recordsToInsert.length }
     } finally {
       set({ loading: false })
     }
