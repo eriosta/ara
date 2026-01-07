@@ -424,11 +424,24 @@ export const BODY_PART_RULES: ClassificationRule[] = [
   },
 
   // ========== STANDARD BODY PARTS ==========
+  // IMPORTANT: SKULL BASE - MID THIGH must be checked BEFORE general SKULL BASE
+  {
+    priority: 19,
+    pattern: /(SKULL\s+BASE.*(MID\s+)?THIGH|SKULL\s+BASE\s*-\s*MID\s+THIGH)/i,
+    result: 'Whole Body',
+    description: 'SKULL BASE - MID THIGH → Whole Body (must come before Head/Neck rule)',
+    conditions: {
+      mustNotInclude: ['LYMPHOSCINTIGRAPH']
+    }
+  },
   {
     priority: 20,
     pattern: /(HEAD|NECK|BRAIN|SKULL|ORBITS|FACIAL|SINUS|TEMPORAL|PITUITARY|CRANIAL|SKULL\s+BASE|THYROID|PARATHYROID|DATSCAN|MAXILLOFACIAL)/i,
     result: 'Head/Neck',
-    description: 'Head/Neck anatomy'
+    description: 'Head/Neck anatomy (excludes SKULL BASE - MID THIGH which is whole body)',
+    conditions: {
+      mustNotInclude: ['SKULL BASE.*THIGH', 'SKULL BASE.*MID THIGH']
+    }
   },
   {
     priority: 21,
@@ -496,6 +509,24 @@ export const BODY_PART_RULES: ClassificationRule[] = [
 
   // ========== SPECIAL CASES ==========
   {
+    priority: 35,
+    pattern: /(SKULL\s+BASE.*(MID\s+)?THIGH|SKULL\s+BASE\s*-\s*MID\s+THIGH)/i,
+    result: 'Whole Body',
+    description: 'SKULL BASE - MID THIGH → Whole Body (not Head/Neck)',
+    conditions: {
+      mustNotInclude: ['LYMPHOSCINTIGRAPH']
+    }
+  },
+  {
+    priority: 36,
+    pattern: (text: string) => {
+      // PET tumor imaging with SKULL BASE - MID THIGH should be Whole Body
+      return /PET/i.test(text) && /TUMOR\s+IMAGING/i.test(text) && /(SKULL\s+BASE.*THIGH|SKULL\s+BASE\s*-\s*MID\s+THIGH)/i.test(text)
+    },
+    result: 'Whole Body',
+    description: 'PET tumor imaging SKULL BASE - MID THIGH → Whole Body'
+  },
+  {
     priority: 40,
     pattern: (text: string) => {
       return /BILATERAL/i.test(text) && /(KNEE|KNEES)/i.test(text)
@@ -506,10 +537,11 @@ export const BODY_PART_RULES: ClassificationRule[] = [
   {
     priority: 41,
     pattern: (text: string) => {
-      return /PET/i.test(text) && /(BRAIN|DEMENTIA|AMYLOID)/i.test(text)
+      // Brain PET → Head/Neck (but exclude SKULL BASE - MID THIGH which is whole body)
+      return /PET/i.test(text) && /(BRAIN|DEMENTIA|AMYLOID)/i.test(text) && !/(SKULL\s+BASE.*THIGH|SKULL\s+BASE\s*-\s*MID\s+THIGH)/i.test(text)
     },
     result: 'Head/Neck',
-    description: 'Brain PET → Head/Neck'
+    description: 'Brain PET → Head/Neck (exclude whole body scans)'
   },
   {
     priority: 42,
