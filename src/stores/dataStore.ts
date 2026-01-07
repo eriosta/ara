@@ -315,12 +315,63 @@ export const useDataStore = create<DataState>((set, get) => ({
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
 
-      // Insert all records - database will handle duplicates via unique constraint
+      // Check for existing records with matching timestamps
+      const timestamps = [...new Set(recordsToInsert.map(r => r.dictation_datetime))]
+      const { data: existingRecords } = await supabase
+        .from('rvu_records')
+        .select('dictation_datetime, exam_description')
+        .eq('user_id', userId)
+        .in('dictation_datetime', timestamps.slice(0, 200)) // Limit to avoid query size issues
+
+      const existingMap = new Map<string, string>()
+      if (existingRecords) {
+        existingRecords.forEach(r => {
+          existingMap.set(r.dictation_datetime, r.exam_description)
+        })
+      }
+
+      // Adjust timestamps for records that would conflict
+      // Track all timestamps (both existing and in this batch) to handle duplicates
+      const timestampCounts = new Map<string, number>()
+      
+      // Initialize counts from existing records
+      if (existingRecords) {
+        existingRecords.forEach(r => {
+          timestampCounts.set(r.dictation_datetime, 1)
+        })
+      }
+      
+      // Adjust timestamps for conflicts (same timestamp, different exam) or duplicates within batch
+      const adjustedRecords = recordsToInsert.map(record => {
+        const existing = existingMap.get(record.dictation_datetime)
+        const isConflict = existing && existing !== record.exam_description
+        const count = timestampCounts.get(record.dictation_datetime) || 0
+        
+        if (isConflict || count > 0) {
+          // This is a conflict or duplicate - adjust timestamp slightly
+          timestampCounts.set(record.dictation_datetime, count + 1)
+          
+          const baseDate = new Date(record.dictation_datetime)
+          // Add milliseconds: 1ms, 2ms, 3ms, etc. (max 999ms to stay within same second)
+          const adjustedDate = new Date(baseDate.getTime() + Math.min(count, 999))
+          
+          return {
+            ...record,
+            dictation_datetime: adjustedDate.toISOString()
+          }
+        }
+        
+        // Track this timestamp for future duplicates in the batch
+        timestampCounts.set(record.dictation_datetime, 1)
+        return record
+      })
+
+      // Insert all records (with adjusted timestamps for conflicts)
       const { error } = await supabase
         .from('rvu_records')
-        .upsert(recordsToInsert, {
+        .upsert(adjustedRecords, {
           onConflict: 'user_id,dictation_datetime',
-          ignoreDuplicates: true // Database will skip duplicates automatically
+          ignoreDuplicates: true
         })
 
       // Get count after insert
@@ -332,7 +383,13 @@ export const useDataStore = create<DataState>((set, get) => ({
       const actuallyInserted = (afterCount || 0) - (beforeCount || 0)
       const duplicatesSkipped = processedRecords.length - actuallyInserted
 
-      console.log(`[addRecords] Upsert result: error=${error?.message || 'none'}, attempted=${recordsToInsert.length}, inserted=${actuallyInserted}, skipped=${duplicatesSkipped}`)
+      // Log conflicts that were adjusted
+      const conflictsAdjusted = timestampCounts.size
+      if (conflictsAdjusted > 0) {
+        console.log(`[addRecords] Adjusted ${conflictsAdjusted} record timestamps to avoid conflicts (different exams with same timestamp)`)
+      }
+      
+      console.log(`[addRecords] Upsert result: attempted=${recordsToInsert.length}, inserted=${actuallyInserted}, skipped=${duplicatesSkipped}${conflictsAdjusted > 0 ? `, ${conflictsAdjusted} timestamps adjusted` : ''}`)
 
       if (!error) {
         await get().fetchRecords(userId)

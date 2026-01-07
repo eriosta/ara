@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, X, File, Copy, XCircle, AlertTriangle } from 'lucide-react'
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, X, File, Copy, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface FileUploadProps {

@@ -1,7 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useDataStore } from '@/stores/dataStore'
-import { useAuthStore } from '@/stores/authStore'
-import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff, Copy, AlertCircle } from 'lucide-react'
+import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
@@ -30,8 +29,7 @@ interface ModalityData {
 }
 
 export default function BreakdownPage() {
-  const { user } = useAuthStore()
-  const { records, filteredRecords, falseDuplicates, clearFalseDuplicates, checkForDuplicates } = useDataStore()
+  const { records, filteredRecords, falseDuplicates, clearFalseDuplicates } = useDataStore()
   
   // Filter states
   const [selectedModalities, setSelectedModalities] = useState<Set<string>>(new Set())
@@ -45,17 +43,9 @@ export default function BreakdownPage() {
   // Data quality view
   const [showDataQuality, setShowDataQuality] = useState(false)
   const [showDuplicates, setShowDuplicates] = useState(false)
-  const [checkingDuplicates, setCheckingDuplicates] = useState(false)
 
   // Use filtered records if available, otherwise all records
   const activeRecords = filteredRecords.length > 0 ? filteredRecords : records
-
-  // Check for duplicates when page loads (only if we have records but no duplicates stored)
-  useEffect(() => {
-    if (user && records.length > 0 && falseDuplicates.length === 0) {
-      // Don't auto-check, let user click button if they want
-    }
-  }, [user, records.length, falseDuplicates.length])
 
   // Build hierarchical data structure
   const { 
