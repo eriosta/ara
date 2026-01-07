@@ -130,23 +130,33 @@ export function modalityFromDesc(s: string): string {
     return 'Nuclear Medicine'
   }
 
-  // Other specific NM terms
-  const nmTerms = ['RENAL SCAN', 'MAG3', 'LASIX RENAL', 'LUNG VENT', 'PERF SCAN', 
-    'VQ SCAN', 'V/Q', 'GALLIUM', 'TAGGED RBC', 'BLEEDING SCAN', 'MECKEL',
-    'OCTREOTIDE', 'MIBG', 'TUMOR IMAGING']
-  if (nmTerms.some(term => t.includes(term))) {
-    return 'Nuclear Medicine'
-  }
-
-  // ========== PET IMAGING ==========
-  // PET/CT must come before CT check
-  if (t.includes('PET/CT') || t.includes('PET CT') || t.includes('PET-CT')) {
+  // ========== PET IMAGING (before other NM terms since PET uses some similar terminology) ==========
+  // PET/CT - check for explicit PET/CT patterns
+  if (t.includes('PET/CT') || t.includes('PET CT') || t.includes('PET-CT') || t.includes('PET -')) {
     return 'PET/CT'
   }
 
-  // PET alone
+  // PET with concurrent CT (common phrasing for PET/CT studies)
+  if (t.includes('PET') && (t.includes('CONCURRENT CT') || t.includes('W/ CT') || t.includes('WITH CT'))) {
+    return 'PET/CT'
+  }
+
+  // PET tumor imaging is typically PET/CT
+  if (t.includes('PET') && t.includes('TUMOR IMAGING')) {
+    return 'PET/CT'
+  }
+
+  // PET alone (without CT)
   if (t.includes('PET') || t.includes('POSITRON')) {
-    return 'PET'
+    return 'PET/CT' // Most modern PET is PET/CT
+  }
+
+  // Other specific NM terms (after PET check)
+  const nmTerms = ['RENAL SCAN', 'MAG3', 'LASIX RENAL', 'LUNG VENT', 'PERF SCAN', 
+    'VQ SCAN', 'V/Q', 'GALLIUM', 'TAGGED RBC', 'BLEEDING SCAN', 'MECKEL',
+    'OCTREOTIDE', 'MIBG']
+  if (nmTerms.some(term => t.includes(term))) {
+    return 'Nuclear Medicine'
   }
 
   // ========== MRI VARIATIONS ==========
