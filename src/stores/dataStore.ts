@@ -45,7 +45,14 @@ interface DataState {
     insertedCount?: number
     processedCount?: number
     duplicatesSkipped?: number
-    filteredOut?: number 
+    filteredOut?: number
+    falseDuplicates?: Array<{
+      timestamp: string
+      existingExam: string
+      newExam: string
+      existingRvu: number
+      newRvu: number
+    }>
   }>
   clearRecords: (userId: string) => Promise<{ error: Error | null }>
   reprocessRecords: (userId: string) => Promise<{ error: Error | null; count: number }>
@@ -210,7 +217,8 @@ export const useDataStore = create<DataState>((set, get) => ({
           error: new Error(`Data processing failed: 0 of ${rawData.length} records were valid. This may be a date format issue.`),
           insertedCount: 0,
           processedCount: 0,
-          duplicatesSkipped: 0
+          duplicatesSkipped: 0,
+          falseDuplicates: []
         }
       }
       
@@ -223,6 +231,49 @@ export const useDataStore = create<DataState>((set, get) => ({
         exam_type: r.examType,
         body_part: r.bodyPart,
       }))
+
+      // Get timestamps we're trying to insert
+      const timestamps = recordsToInsert.map(r => r.dictation_datetime)
+      
+      // Fetch existing records with matching timestamps to detect false duplicates
+      const { data: existingRecords } = await supabase
+        .from('rvu_records')
+        .select('dictation_datetime, exam_description, wrvu_estimate')
+        .eq('user_id', userId)
+        .in('dictation_datetime', timestamps)
+
+      // Find false duplicates: same timestamp but different exam description
+      const falseDuplicates: Array<{
+        timestamp: string
+        existingExam: string
+        newExam: string
+        existingRvu: number
+        newRvu: number
+      }> = []
+      
+      if (existingRecords) {
+        const existingMap = new Map(existingRecords.map(r => [r.dictation_datetime, r]))
+        
+        for (const newRecord of recordsToInsert) {
+          const existing = existingMap.get(newRecord.dictation_datetime)
+          if (existing && existing.exam_description !== newRecord.exam_description) {
+            falseDuplicates.push({
+              timestamp: newRecord.dictation_datetime,
+              existingExam: existing.exam_description,
+              newExam: newRecord.exam_description,
+              existingRvu: existing.wrvu_estimate,
+              newRvu: newRecord.wrvu_estimate
+            })
+          }
+        }
+      }
+
+      if (falseDuplicates.length > 0) {
+        console.warn(`[addRecords] Found ${falseDuplicates.length} FALSE DUPLICATES (same timestamp, different exam):`)
+        falseDuplicates.slice(0, 5).forEach(fd => {
+          console.warn(`  ${fd.timestamp}: "${fd.existingExam}" vs "${fd.newExam}"`)
+        })
+      }
 
       // Get count before insert to calculate duplicates
       const { count: beforeCount } = await supabase
@@ -247,7 +298,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       const actuallyInserted = (afterCount || 0) - (beforeCount || 0)
       const duplicatesSkipped = processedRecords.length - actuallyInserted
 
-      console.log(`[addRecords] Upsert result: error=${error?.message || 'none'}, attempted=${recordsToInsert.length}, inserted=${actuallyInserted}, duplicates=${duplicatesSkipped}`)
+      console.log(`[addRecords] Upsert result: error=${error?.message || 'none'}, attempted=${recordsToInsert.length}, inserted=${actuallyInserted}, duplicates=${duplicatesSkipped}, falseDuplicates=${falseDuplicates.length}`)
 
       if (!error) {
         await get().fetchRecords(userId)
@@ -258,7 +309,8 @@ export const useDataStore = create<DataState>((set, get) => ({
         insertedCount: actuallyInserted,
         processedCount: processedRecords.length,
         duplicatesSkipped,
-        filteredOut
+        filteredOut,
+        falseDuplicates
       }
     } finally {
       set({ loading: false })

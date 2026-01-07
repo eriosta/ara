@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useDataStore } from '@/stores/dataStore'
-import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw } from 'lucide-react'
+import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 
@@ -38,6 +38,9 @@ export default function BreakdownPage() {
   // Expansion states
   const [expandedModalities, setExpandedModalities] = useState<Set<string>>(new Set())
   const [expandedBodyParts, setExpandedBodyParts] = useState<Set<string>>(new Set())
+  
+  // Data quality view
+  const [showDataQuality, setShowDataQuality] = useState(false)
 
   // Use filtered records if available, otherwise all records
   const activeRecords = filteredRecords.length > 0 ? filteredRecords : records
@@ -47,16 +50,31 @@ export default function BreakdownPage() {
     byModality, 
     allModalities, 
     allBodyParts,
-    grandTotal 
+    grandTotal,
+    dataQualityIssues
   } = useMemo(() => {
     const byModality: Record<string, ModalityData> = {}
     const allModalities = new Set<string>()
     const allBodyParts = new Set<string>()
     let grandTotal = { count: 0, totalRvu: 0 }
+    
+    // Track data quality issues
+    const unknownModality: StudyRecord[] = []
+    const unknownBodyPart: StudyRecord[] = []
+    const otherModality: StudyRecord[] = []
+    const lowRvu: StudyRecord[] = []
+    const highRvu: StudyRecord[] = []
 
     activeRecords.forEach(record => {
       const modality = record.modality || 'Unknown'
       const bodyPart = record.bodyPart || 'Unknown'
+      
+      // Track quality issues
+      if (modality === 'Unknown' || !record.modality) unknownModality.push(record)
+      else if (modality === 'Other') otherModality.push(record)
+      if (bodyPart === 'Unknown' || !record.bodyPart) unknownBodyPart.push(record)
+      if (record.wrvuEstimate === 0) lowRvu.push(record)
+      if (record.wrvuEstimate > 10) highRvu.push(record)
 
       allModalities.add(modality)
       allBodyParts.add(bodyPart)
@@ -85,11 +103,21 @@ export default function BreakdownPage() {
       grandTotal.totalRvu += record.wrvuEstimate
     })
 
+    const dataQualityIssues = {
+      unknownModality,
+      unknownBodyPart,
+      otherModality,
+      lowRvu,
+      highRvu,
+      totalIssues: new Set([...unknownModality, ...otherModality, ...unknownBodyPart]).size
+    }
+
     return {
       byModality,
       allModalities: Array.from(allModalities).sort(),
       allBodyParts: Array.from(allBodyParts).sort(),
-      grandTotal
+      grandTotal,
+      dataQualityIssues
     }
   }, [activeRecords])
 
@@ -367,6 +395,27 @@ export default function BreakdownPage() {
             </div>
           </div>
         </div>
+
+        {/* Data Quality */}
+        {dataQualityIssues.totalIssues > 0 && (
+          <div className="pt-4 mt-4 border-t border-slate-800">
+            <button
+              onClick={() => setShowDataQuality(!showDataQuality)}
+              className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors ${
+                showDataQuality ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800/50 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-xs font-medium">Data Quality</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs">{dataQualityIssues.totalIssues}</span>
+                {showDataQuality ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+              </div>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Content */}
@@ -389,6 +438,117 @@ export default function BreakdownPage() {
             </p>
           </div>
         </div>
+
+        {/* Data Quality Panel */}
+        {showDataQuality && (
+          <div className="mb-6 rounded-xl bg-amber-500/10 border border-amber-500/30 overflow-hidden">
+            <div className="px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-semibold text-amber-400">Data Quality Issues</h3>
+              </div>
+              <button
+                onClick={() => setShowDataQuality(false)}
+                className="text-amber-400/70 hover:text-amber-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Unknown Modality */}
+              {dataQualityIssues.unknownModality.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-medium text-slate-400 mb-2 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    Unknown Modality ({dataQualityIssues.unknownModality.length})
+                  </h4>
+                  <div className="max-h-[150px] overflow-y-auto space-y-1">
+                    {dataQualityIssues.unknownModality.slice(0, 20).map((s, i) => (
+                      <div key={i} className="text-xs px-2 py-1.5 rounded bg-slate-800/50 flex justify-between items-center">
+                        <span className="text-slate-300 truncate flex-1 mr-2">{s.examDescription}</span>
+                        <span className="text-slate-500 whitespace-nowrap">{s.wrvuEstimate.toFixed(2)} RVU</span>
+                      </div>
+                    ))}
+                    {dataQualityIssues.unknownModality.length > 20 && (
+                      <div className="text-xs text-slate-500 text-center py-1">
+                        +{dataQualityIssues.unknownModality.length - 20} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Other Modality */}
+              {dataQualityIssues.otherModality.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-medium text-slate-400 mb-2 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-orange-500" />
+                    "Other" Modality - Needs Classification ({dataQualityIssues.otherModality.length})
+                  </h4>
+                  <div className="max-h-[150px] overflow-y-auto space-y-1">
+                    {dataQualityIssues.otherModality.slice(0, 20).map((s, i) => (
+                      <div key={i} className="text-xs px-2 py-1.5 rounded bg-slate-800/50 flex justify-between items-center">
+                        <span className="text-slate-300 truncate flex-1 mr-2">{s.examDescription}</span>
+                        <span className="text-slate-500 whitespace-nowrap">{s.wrvuEstimate.toFixed(2)} RVU</span>
+                      </div>
+                    ))}
+                    {dataQualityIssues.otherModality.length > 20 && (
+                      <div className="text-xs text-slate-500 text-center py-1">
+                        +{dataQualityIssues.otherModality.length - 20} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Unknown Body Part */}
+              {dataQualityIssues.unknownBodyPart.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-medium text-slate-400 mb-2 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                    Unknown Body Part ({dataQualityIssues.unknownBodyPart.length})
+                  </h4>
+                  <div className="max-h-[150px] overflow-y-auto space-y-1">
+                    {dataQualityIssues.unknownBodyPart.slice(0, 20).map((s, i) => (
+                      <div key={i} className="text-xs px-2 py-1.5 rounded bg-slate-800/50 flex justify-between items-center">
+                        <span className="text-slate-300 truncate flex-1 mr-2">{s.examDescription}</span>
+                        <span className="text-emerald-400 whitespace-nowrap">{s.modality}</span>
+                      </div>
+                    ))}
+                    {dataQualityIssues.unknownBodyPart.length > 20 && (
+                      <div className="text-xs text-slate-500 text-center py-1">
+                        +{dataQualityIssues.unknownBodyPart.length - 20} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Zero RVU */}
+              {dataQualityIssues.lowRvu.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-medium text-slate-400 mb-2 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-slate-500" />
+                    Zero RVU Studies ({dataQualityIssues.lowRvu.length})
+                  </h4>
+                  <div className="max-h-[100px] overflow-y-auto space-y-1">
+                    {dataQualityIssues.lowRvu.slice(0, 10).map((s, i) => (
+                      <div key={i} className="text-xs px-2 py-1.5 rounded bg-slate-800/50 flex justify-between items-center">
+                        <span className="text-slate-300 truncate flex-1 mr-2">{s.examDescription}</span>
+                        <span className="text-slate-500">{s.modality}</span>
+                      </div>
+                    ))}
+                    {dataQualityIssues.lowRvu.length > 10 && (
+                      <div className="text-xs text-slate-500 text-center py-1">
+                        +{dataQualityIssues.lowRvu.length - 10} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Active filters display */}
         {hasActiveFilters && (
