@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, X, File } from 'lucide-react'
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, X, File, Copy, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface FileUploadProps {
@@ -18,12 +18,19 @@ interface ProcessedFile {
   error?: string
 }
 
+interface UploadError {
+  message: string
+  details: string
+  timestamp: string
+}
+
 export default function FileUpload({ compact = false }: FileUploadProps) {
   const { user } = useAuthStore()
   const { addRecords, loading } = useDataStore()
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<UploadError | null>(null)
 
   const processExcelFile = async (file: File): Promise<{ dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]> => {
     const buffer = await file.arrayBuffer()
@@ -164,6 +171,7 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
     if (!user || selectedFiles.length === 0) return
 
     setUploading(true)
+    setUploadError(null) // Clear previous errors
     const allData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[] = []
     const fileStatuses: ProcessedFile[] = selectedFiles.map(f => ({
       name: f.name,
@@ -171,6 +179,8 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
       status: 'pending' as const
     }))
     setProcessedFiles(fileStatuses)
+
+    const fileErrors: string[] = []
 
     // Process each file
     for (let i = 0; i < selectedFiles.length; i++) {
@@ -196,12 +206,14 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
           idx === i ? { ...f, status: 'done', rows: data.length } : f
         ))
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        fileErrors.push(`${file.name}: ${errorMsg}`)
         // Update status to error
         setProcessedFiles(prev => prev.map((f, idx) => 
           idx === i ? { 
             ...f, 
             status: 'error', 
-            error: error instanceof Error ? error.message : 'Unknown error' 
+            error: errorMsg 
           } : f
         ))
       }
@@ -217,22 +229,64 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
       const result = await addRecords(user.id, allData)
       if (result.error) {
         console.error('Upload error:', result.error)
-        toast.error(result.error.message || 'Failed to upload to database')
+        const errorDetails = [
+          `User: ${user.email || user.id}`,
+          `Files: ${selectedFiles.map(f => f.name).join(', ')}`,
+          `Raw records parsed: ${allData.length}`,
+          `Error: ${result.error.message || 'Unknown database error'}`,
+          `Browser: ${navigator.userAgent}`,
+        ].join('\n')
+        
+        setUploadError({
+          message: 'Failed to save records to database',
+          details: errorDetails,
+          timestamp: new Date().toISOString()
+        })
+        toast.error('Upload failed - see error details below')
       } else {
         toast.success(`Successfully imported ${allData.length.toLocaleString()} records from ${selectedFiles.length} file(s)!`)
         setSelectedFiles([])
         setProcessedFiles([])
+        setUploadError(null)
       }
     } else {
-      toast.error('No valid data found in the uploaded files')
+      const errorDetails = [
+        `User: ${user.email || user.id}`,
+        `Files: ${selectedFiles.map(f => f.name).join(', ')}`,
+        `File parsing errors: ${fileErrors.length > 0 ? fileErrors.join('; ') : 'None'}`,
+        `Browser: ${navigator.userAgent}`,
+      ].join('\n')
+      
+      setUploadError({
+        message: 'No valid data found in uploaded files',
+        details: errorDetails,
+        timestamp: new Date().toISOString()
+      })
+      toast.error('No valid data found - see error details below')
     }
 
     setUploading(false)
   }
 
+  const copyErrorToClipboard = () => {
+    if (!uploadError) return
+    const errorText = `
+=== myRVU Upload Error Report ===
+Time: ${uploadError.timestamp}
+Error: ${uploadError.message}
+
+Details:
+${uploadError.details}
+================================
+`.trim()
+    navigator.clipboard.writeText(errorText)
+    toast.success('Error details copied to clipboard!')
+  }
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setSelectedFiles(prev => [...prev, ...acceptedFiles])
     setProcessedFiles([])
+    setUploadError(null) // Clear errors when new files are added
   }, [])
 
   const removeFile = (index: number) => {
@@ -308,6 +362,41 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
               style={{ backgroundColor: 'var(--accent-primary)' }}
             >
               {uploading ? 'Processing...' : `Import ${selectedFiles.length} File${selectedFiles.length > 1 ? 's' : ''}`}
+            </button>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {uploadError && (
+          <div 
+            className="mt-3 p-3 rounded-xl text-xs"
+            style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--danger)' }}
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <XCircle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--danger)' }} />
+                <span className="font-semibold" style={{ color: 'var(--danger)' }}>{uploadError.message}</span>
+              </div>
+              <button
+                onClick={() => setUploadError(null)}
+                className="p-1 rounded hover:bg-red-500/20"
+              >
+                <X className="w-3 h-3" style={{ color: 'var(--danger)' }} />
+              </button>
+            </div>
+            <pre 
+              className="p-2 rounded text-[10px] overflow-x-auto whitespace-pre-wrap break-all"
+              style={{ backgroundColor: 'rgba(0,0,0,0.2)', color: 'var(--text-secondary)' }}
+            >
+              {uploadError.details}
+            </pre>
+            <button
+              onClick={copyErrorToClipboard}
+              className="mt-2 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors hover:bg-red-500/20"
+              style={{ color: 'var(--danger)' }}
+            >
+              <Copy className="w-3 h-3" />
+              Copy Error Details
             </button>
           </div>
         )}
@@ -458,6 +547,44 @@ export default function FileUpload({ compact = false }: FileUploadProps) {
               ? 'Processing & Uploading...' 
               : `Import ${selectedFiles.length} File${selectedFiles.length > 1 ? 's' : ''} to Database`
             }
+          </button>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {uploadError && (
+        <div 
+          className="mt-6 p-4 rounded-xl"
+          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--danger)' }}
+        >
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <XCircle className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--danger)' }} />
+              <span className="font-semibold" style={{ color: 'var(--danger)' }}>{uploadError.message}</span>
+            </div>
+            <button
+              onClick={() => setUploadError(null)}
+              className="p-1.5 rounded-lg hover:bg-red-500/20 transition-colors"
+            >
+              <X className="w-4 h-4" style={{ color: 'var(--danger)' }} />
+            </button>
+          </div>
+          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+            Please copy the error details below and send them to support:
+          </p>
+          <pre 
+            className="p-3 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap break-all"
+            style={{ backgroundColor: 'rgba(0,0,0,0.3)', color: 'var(--text-secondary)' }}
+          >
+            {uploadError.details}
+          </pre>
+          <button
+            onClick={copyErrorToClipboard}
+            className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-red-500/20"
+            style={{ color: 'var(--danger)', border: '1px solid var(--danger)' }}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Error Details to Clipboard
           </button>
         </div>
       )}
