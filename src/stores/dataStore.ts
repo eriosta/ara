@@ -12,6 +12,14 @@ export interface SuggestedGoals {
   description: string       // Text description of recommendation
 }
 
+export interface FalseDuplicate {
+  timestamp: string
+  existingExam: string
+  newExam: string
+  existingRvu: number
+  newRvu: number
+}
+
 export interface DateTimeFilters {
   startDate: string | null   // ISO date string YYYY-MM-DD
   endDate: string | null     // ISO date string YYYY-MM-DD
@@ -36,9 +44,12 @@ interface DataState {
   filters: DateTimeFilters
   availableModalities: string[]
   availableBodyParts: string[]
+  falseDuplicates: FalseDuplicate[]
   setGoalRvuPerDay: (goal: number) => void
   setFilters: (filters: Partial<DateTimeFilters>) => void
   clearFilters: () => void
+  setFalseDuplicates: (duplicates: FalseDuplicate[]) => void
+  clearFalseDuplicates: () => void
   fetchRecords: (userId: string) => Promise<void>
   addRecords: (userId: string, rawData: { dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]) => Promise<{ 
     error: Error | null
@@ -96,6 +107,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   filters: defaultFilters,
   availableModalities: [],
   availableBodyParts: [],
+  falseDuplicates: [],
 
   setGoalRvuPerDay: (goal: number) => {
     set({ goalRvuPerDay: goal })
@@ -111,6 +123,14 @@ export const useDataStore = create<DataState>((set, get) => ({
   clearFilters: () => {
     set({ filters: defaultFilters })
     get().processData()
+  },
+
+  setFalseDuplicates: (duplicates: FalseDuplicate[]) => {
+    set({ falseDuplicates: duplicates })
+  },
+
+  clearFalseDuplicates: () => {
+    set({ falseDuplicates: [] })
   },
 
   calculateSuggestedGoals: () => {

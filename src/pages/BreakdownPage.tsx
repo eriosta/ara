@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useDataStore } from '@/stores/dataStore'
-import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff } from 'lucide-react'
+import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff, Copy, AlertCircle } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 
@@ -28,7 +29,7 @@ interface ModalityData {
 }
 
 export default function BreakdownPage() {
-  const { records, filteredRecords } = useDataStore()
+  const { records, filteredRecords, falseDuplicates, clearFalseDuplicates } = useDataStore()
   
   // Filter states
   const [selectedModalities, setSelectedModalities] = useState<Set<string>>(new Set())
@@ -41,6 +42,7 @@ export default function BreakdownPage() {
   
   // Data quality view
   const [showDataQuality, setShowDataQuality] = useState(false)
+  const [showDuplicates, setShowDuplicates] = useState(false)
 
   // Use filtered records if available, otherwise all records
   const activeRecords = filteredRecords.length > 0 ? filteredRecords : records
@@ -416,6 +418,27 @@ export default function BreakdownPage() {
             </button>
           </div>
         )}
+
+        {/* Duplicate Records */}
+        {falseDuplicates.length > 0 && (
+          <div className={`pt-4 ${dataQualityIssues.totalIssues === 0 ? 'mt-4 border-t border-slate-800' : ''}`}>
+            <button
+              onClick={() => setShowDuplicates(!showDuplicates)}
+              className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors ${
+                showDuplicates ? 'bg-red-500/20 text-red-400' : 'bg-slate-800/50 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Copy className="w-4 h-4" />
+                <span className="text-xs font-medium">Skipped Duplicates</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs">{falseDuplicates.length}</span>
+                {showDuplicates ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+              </div>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Content */}
@@ -546,6 +569,108 @@ export default function BreakdownPage() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Skipped Duplicates Panel */}
+        {showDuplicates && falseDuplicates.length > 0 && (
+          <div className="mb-6 rounded-xl bg-red-500/10 border border-red-500/30 overflow-hidden">
+            <div className="px-4 py-3 bg-red-500/10 border-b border-red-500/20 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-400" />
+                <h3 className="text-sm font-semibold text-red-400">Skipped Duplicate Records</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    clearFalseDuplicates()
+                    setShowDuplicates(false)
+                    toast.success('Duplicate records cleared')
+                  }}
+                  className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                >
+                  Clear All
+                </button>
+                <button
+                  onClick={() => setShowDuplicates(false)}
+                  className="text-red-400/70 hover:text-red-400"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="text-xs text-slate-400 mb-4">
+                These records were <strong>NOT</strong> imported because records with the same timestamp already exist in your database.
+                This usually happens when dictating multiple studies at the exact same second, or when re-uploading the same data.
+              </p>
+
+              {/* Summary */}
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="p-3 rounded-lg bg-slate-800/50">
+                  <div className="text-xs text-slate-400">Records Skipped</div>
+                  <div className="text-lg font-bold text-red-400">{falseDuplicates.length}</div>
+                </div>
+                <div className="p-3 rounded-lg bg-slate-800/50">
+                  <div className="text-xs text-slate-400">RVUs Lost</div>
+                  <div className="text-lg font-bold text-red-400">
+                    {falseDuplicates.reduce((sum, d) => sum + d.newRvu, 0).toFixed(1)}
+                  </div>
+                </div>
+              </div>
+
+              {/* List of duplicates */}
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {falseDuplicates.map((dup, i) => (
+                  <div key={i} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700">
+                    <div className="text-xs text-slate-500 mb-2 font-mono">
+                      📅 {new Date(dup.timestamp).toLocaleString()}
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex gap-2 items-start">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30 flex-shrink-0">
+                          IN DB
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-slate-300 break-words">{dup.existingExam}</div>
+                          <div className="text-xs text-emerald-400 font-mono mt-0.5">{dup.existingRvu.toFixed(2)} RVU</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 items-start">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 flex-shrink-0">
+                          SKIPPED
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-slate-400 break-words">{dup.newExam}</div>
+                          <div className="text-xs text-slate-500 font-mono mt-0.5">{dup.newRvu.toFixed(2)} RVU</div>
+                        </div>
+                      </div>
+                    </div>
+                    {dup.existingExam !== dup.newExam && (
+                      <div className="mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/20">
+                        <div className="flex items-center gap-1 text-amber-400 text-xs">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span className="font-medium">Different studies, same timestamp!</span>
+                        </div>
+                        <div className="text-[10px] text-amber-400/80 mt-1">
+                          This is likely a data loss - two different studies dictated at the same second.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 p-3 rounded-lg bg-slate-800/30 border border-slate-700">
+                <h4 className="text-xs font-medium text-slate-300 mb-1">💡 Why does this happen?</h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Records are identified by their timestamp (dictation date/time). When two different studies have 
+                  the exact same timestamp (down to the second), the system keeps the first one and skips subsequent 
+                  ones to avoid duplicates. If you see many "Different studies" warnings above, you may need to 
+                  manually add those missing studies or contact support.
+                </p>
+              </div>
             </div>
           </div>
         )}

@@ -24,22 +24,13 @@ interface UploadError {
   timestamp: string
 }
 
-interface FalseDuplicate {
-  timestamp: string
-  existingExam: string
-  newExam: string
-  existingRvu: number
-  newRvu: number
-}
-
 export default function FileUpload({ compact = false }: FileUploadProps) {
   const { user } = useAuthStore()
-  const { addRecords, loading } = useDataStore()
+  const { addRecords, loading, setFalseDuplicates, falseDuplicates } = useDataStore()
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<UploadError | null>(null)
-  const [falseDuplicates, setFalseDuplicates] = useState<FalseDuplicate[]>([])
 
   const processExcelFile = async (file: File): Promise<{ dictation_datetime: string; exam_description: string; wrvu_estimate: number }[]> => {
     const buffer = await file.arrayBuffer()
