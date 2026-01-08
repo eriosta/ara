@@ -287,16 +287,15 @@ export default function BreakdownPage() {
   // Show loading state
   if (loading && records.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-950 p-6">
-        <div className="max-w-7xl mx-auto">
-          <Link 
-            to="/dashboard" 
-            className="inline-flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </Link>
-          <div className="flex items-center justify-center h-64">
+      <div className="flex min-h-screen bg-slate-950">
+        <Sidebar 
+          isOpen={sidebarOpen} 
+          onClose={() => setSidebarOpen(false)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+        <div className={`flex-1 bg-slate-950 transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-72'}`}>
+          <div className="flex items-center justify-center h-screen">
             <div className="text-center">
               <div className="w-10 h-10 border-2 border-slate-700 border-t-emerald-400 rounded-full animate-spin mx-auto mb-4" />
               <p className="text-slate-500">Loading your data...</p>
@@ -310,19 +309,20 @@ export default function BreakdownPage() {
   // Show empty state only if not loading and no data
   if (activeRecords.length === 0 && !loading) {
     return (
-      <div className="min-h-screen bg-slate-950 p-6">
-        <div className="max-w-7xl mx-auto">
-          <Link 
-            to="/dashboard" 
-            className="inline-flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
-          </Link>
-          <div className="text-center py-20">
-            <Filter className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-            <h2 className="text-xl font-semibold text-white mb-2">No Data Available</h2>
-            <p className="text-slate-400">Upload some data to see the study breakdown.</p>
+      <div className="flex min-h-screen bg-slate-950">
+        <Sidebar 
+          isOpen={sidebarOpen} 
+          onClose={() => setSidebarOpen(false)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+        <div className={`flex-1 bg-slate-950 transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-72'}`}>
+          <div className="flex items-center justify-center h-screen">
+            <div className="text-center">
+              <Filter className="w-16 h-16 mx-auto mb-4 text-slate-600" />
+              <h2 className="text-xl font-semibold text-white mb-2">No Data Available</h2>
+              <p className="text-slate-400">Upload some data to see the study breakdown.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -380,7 +380,7 @@ export default function BreakdownPage() {
         <div className="h-full overflow-y-auto p-4">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
-            {!sidebarCollapsed && (
+            {!filterSidebarCollapsed && (
               <>
                 <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                   <Filter className="w-4 h-4" />
