@@ -15,6 +15,7 @@ export default function Dashboard() {
   const { user, profile, fetchProfile } = useAuthStore()
   const { records, metrics, fetchRecords, setGoalRvuPerDay, loading } = useDataStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [initialFetchDone, setInitialFetchDone] = useState(false)
 
   // Only fetch once when user is available

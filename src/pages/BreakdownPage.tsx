@@ -519,6 +519,7 @@ export default function BreakdownPage() {
           </div>
         )}
 
+        </div>
       </div>
 
       {/* Main Content */}

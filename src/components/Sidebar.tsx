@@ -692,7 +692,8 @@ export default function Sidebar({ isOpen, onClose, collapsed = false, onToggleCo
                   )}
                 </div>
               )}
-            </div>
+              </div>
+            )}
 
             {/* Upload Data */}
             {!collapsed && (
