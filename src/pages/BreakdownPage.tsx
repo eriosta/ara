@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
-import { ChevronRight, ChevronDown, ArrowLeft, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import Sidebar from '@/components/Sidebar'
+import { ChevronRight, ChevronDown, Search, X, Filter, RotateCcw, AlertTriangle, Eye, EyeOff, Menu } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface StudyRecord {
@@ -32,7 +32,9 @@ export default function BreakdownPage() {
   const { user } = useAuthStore()
   const { records, filteredRecords, fetchRecords, loading } = useDataStore()
   const [initialFetchDone, setInitialFetchDone] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [filterSidebarCollapsed, setFilterSidebarCollapsed] = useState(false)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   
   // Filter states
@@ -328,44 +330,53 @@ export default function BreakdownPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col lg:flex-row">
-      {/* Mobile Header */}
-      <header className="lg:hidden sticky top-0 z-30 px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-        <Link 
-          to="/dashboard" 
-          className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span className="text-sm">Dashboard</span>
-        </Link>
-        <h1 className="text-lg font-display font-bold">
-          <span className="text-white">Study</span>
-          <span className="text-emerald-400"> Breakdown</span>
-        </h1>
-        <button
-          onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
-          className="p-2 rounded-lg transition-colors bg-slate-800 hover:bg-slate-700"
-        >
-          <Filter className={`w-5 h-5 ${mobileFiltersOpen ? 'text-emerald-400' : 'text-slate-400'}`} />
-        </button>
-      </header>
+    <div className="flex min-h-screen bg-slate-950">
+      {/* Main Sidebar */}
+      <Sidebar 
+        isOpen={sidebarOpen} 
+        onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
 
-      {/* Mobile Overlay */}
-      {mobileFiltersOpen && (
-        <div 
-          className="lg:hidden fixed inset-0 bg-black/50 z-30"
-          onClick={() => setMobileFiltersOpen(false)}
-        />
-      )}
+      {/* Main Content Area */}
+      <div className={`flex-1 bg-slate-950 transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-72'} flex flex-col lg:flex-row`}>
+        {/* Mobile Header */}
+        <header className="lg:hidden sticky top-0 z-30 px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-lg transition-colors bg-slate-800 hover:bg-slate-700"
+          >
+            <Menu className="w-5 h-5 text-slate-400" />
+          </button>
+          <h1 className="text-lg font-display font-bold">
+            <span className="text-white">Study</span>
+            <span className="text-emerald-400"> Breakdown</span>
+          </h1>
+          <button
+            onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+            className="p-2 rounded-lg transition-colors bg-slate-800 hover:bg-slate-700"
+          >
+            <Filter className={`w-5 h-5 ${mobileFiltersOpen ? 'text-emerald-400' : 'text-slate-400'}`} />
+          </button>
+        </header>
 
-      {/* Left Sidebar - Filters */}
-      <div className={`
-        ${sidebarCollapsed ? 'w-0 lg:w-16' : 'w-full lg:w-64'} 
-        flex-shrink-0 border-r border-slate-800 bg-slate-900/50 
-        overflow-hidden transition-all duration-300 ease-out
-        ${mobileFiltersOpen ? 'block' : 'hidden lg:block'}
-        lg:relative fixed lg:static inset-0 z-40 lg:z-auto
-      `}>
+        {/* Mobile Overlay for Filters */}
+        {mobileFiltersOpen && (
+          <div 
+            className="lg:hidden fixed inset-0 bg-black/50 z-30"
+            onClick={() => setMobileFiltersOpen(false)}
+          />
+        )}
+
+        {/* Right Sidebar - Filters */}
+        <div className={`
+          ${filterSidebarCollapsed ? 'w-0 lg:w-16' : 'w-full lg:w-64'} 
+          flex-shrink-0 border-r border-slate-800 bg-slate-900/50 
+          overflow-hidden transition-all duration-300 ease-out
+          ${mobileFiltersOpen ? 'block' : 'hidden lg:block'}
+          lg:relative fixed lg:static inset-0 z-40 lg:z-auto
+        `}>
         <div className="h-full overflow-y-auto p-4">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
@@ -388,11 +399,11 @@ export default function BreakdownPage() {
             )}
             {/* Collapse button - desktop only */}
             <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
               className="hidden lg:block p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-              title={sidebarCollapsed ? "Expand filters" : "Collapse filters"}
+              title={filterSidebarCollapsed ? "Expand filters" : "Collapse filters"}
             >
-              {sidebarCollapsed ? (
+              {filterSidebarCollapsed ? (
                 <ChevronRight className="w-4 h-4" />
               ) : (
                 <ChevronDown className="w-4 h-4 rotate-[-90deg]" />
@@ -408,7 +419,7 @@ export default function BreakdownPage() {
           </div>
 
         {/* Search - hidden when collapsed */}
-        {!sidebarCollapsed && (
+        {!filterSidebarCollapsed && (
           <>
             <div className="relative mb-4">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -478,7 +489,7 @@ export default function BreakdownPage() {
         </div>
 
             {/* Summary Stats */}
-            {!sidebarCollapsed && (
+            {!filterSidebarCollapsed && (
               <div className="pt-4 border-t border-slate-800">
                 <div className="text-xs text-slate-500 mb-2">
                   {hasActiveFilters ? 'Filtered' : 'Total'}
@@ -522,27 +533,21 @@ export default function BreakdownPage() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className={`flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-0' : ''}`}>
-        <div className="p-4 lg:p-6">
-          {/* Header - Desktop only */}
-          <div className="hidden lg:flex items-center gap-4 mb-6">
-            <Link 
-              to="/dashboard" 
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <div>
-            <h1 className="text-2xl font-display font-bold text-white">Study Breakdown</h1>
-            <p className="text-sm text-slate-400">
-              {hasActiveFilters 
-                ? `Showing ${filteredTotals.count} of ${grandTotal.count} studies`
-                : `${grandTotal.count} total studies`
-              }
-              </p>
+        {/* Main Content */}
+        <div className={`flex-1 overflow-y-auto transition-all duration-300`}>
+          <div className="p-4 lg:p-6">
+            {/* Header - Desktop only */}
+            <div className="hidden lg:flex items-center gap-4 mb-6">
+              <div>
+                <h1 className="text-2xl font-display font-bold text-white">Study Breakdown</h1>
+                <p className="text-sm text-slate-400">
+                  {hasActiveFilters 
+                    ? `Showing ${filteredTotals.count} of ${grandTotal.count} studies`
+                    : `${grandTotal.count} total studies`
+                  }
+                </p>
+              </div>
             </div>
-          </div>
 
         {/* Data Quality Panel */}
         {showDataQuality && (
@@ -808,18 +813,19 @@ export default function BreakdownPage() {
             })}
         </div>
 
-        {Object.keys(filteredData).length === 0 && (
-          <div className="text-center py-12">
-            <Search className="w-12 h-12 mx-auto mb-3 text-slate-600" />
-            <p className="text-slate-400">No results match your filters</p>
-            <button
-              onClick={clearFilters}
-              className="mt-3 text-emerald-400 hover:text-emerald-300 text-sm"
-            >
-              Clear all filters
-            </button>
+            {Object.keys(filteredData).length === 0 && (
+              <div className="text-center py-12">
+                <Search className="w-12 h-12 mx-auto mb-3 text-slate-600" />
+                <p className="text-slate-400">No results match your filters</p>
+                <button
+                  onClick={clearFilters}
+                  className="mt-3 text-emerald-400 hover:text-emerald-300 text-sm"
+                >
+                  Clear all filters
+                </button>
+              </div>
+            )}
           </div>
-        )}
         </div>
       </div>
     </div>
