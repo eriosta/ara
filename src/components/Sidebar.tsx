@@ -5,7 +5,7 @@ import { useDataStore } from '@/stores/dataStore'
 import { supabase } from '@/lib/supabase'
 import { 
   X, LogOut, Upload, Target, 
-  FileText, Trash2, ChevronDown, User, AlertCircle,
+  FileText, Trash2, ChevronDown, ChevronLeft, ChevronRight, User, AlertCircle,
   FileSpreadsheet, Calendar, Database, Download, Filter, Clock,
   LayoutDashboard, Table2
 } from 'lucide-react'
@@ -25,9 +25,11 @@ interface UploadRecord {
 interface SidebarProps {
   isOpen: boolean
   onClose: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
-export default function Sidebar({ isOpen, onClose }: SidebarProps) {
+export default function Sidebar({ isOpen, onClose, collapsed = false, onToggleCollapse }: SidebarProps) {
   const location = useLocation()
   const { user, profile, signOut, updateProfile } = useAuthStore()
   const { records, metrics, clearRecords, goalRvuPerDay, setGoalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading, suggestedGoals, filters, setFilters, clearFilters, filteredRecords, availableModalities, availableBodyParts } = useDataStore()
@@ -225,10 +227,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Sidebar */}
       <aside 
         className={`
-          fixed top-0 left-0 h-full w-72 z-50
+          fixed top-0 left-0 h-full z-50
           transform transition-all duration-300 ease-out
           lg:translate-x-0
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${collapsed ? 'w-16 lg:w-16' : 'w-72 lg:w-72'}
         `}
         style={{ 
           backgroundColor: 'var(--bg-secondary)', 
@@ -240,115 +243,135 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
           {/* Header */}
           <div className="p-5" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <div className="flex items-center justify-between">
-              <Logo size="md" />
-              <button
-                onClick={onClose}
-                className="lg:hidden p-2 rounded-lg transition-colors hover:bg-slate-800"
-              >
-                <X className="w-5 h-5 text-slate-500" />
-              </button>
+              {!collapsed && <Logo size="md" />}
+              <div className="flex items-center gap-2">
+                {onToggleCollapse && (
+                  <button
+                    onClick={onToggleCollapse}
+                    className="hidden lg:block p-2 rounded-lg transition-colors hover:bg-slate-800 text-slate-400 hover:text-white"
+                    title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  >
+                    {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                  </button>
+                )}
+                <button
+                  onClick={onClose}
+                  className="lg:hidden p-2 rounded-lg transition-colors hover:bg-slate-800"
+                >
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* User Profile */}
-          <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
-            <div 
-              className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50"
-            >
-              <div className="w-9 h-9 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                <User className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-slate-200">
-                  {profile?.full_name || 'Resident'}
-                </p>
-                <p className="text-xs truncate text-slate-500">
-                  {user?.email}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border-color)' }}>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
-              Navigation
-            </p>
-            <nav className="space-y-1">
-              <Link
-                to="/dashboard"
-                onClick={onClose}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  location.pathname === '/dashboard' 
-                    ? 'bg-emerald-500/10 text-emerald-400' 
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
+          {!collapsed && (
+            <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <div 
+                className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50"
               >
-                <LayoutDashboard className="w-4 h-4" />
-                Dashboard
-              </Link>
-              <Link
-                to="/breakdown"
-                onClick={onClose}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  location.pathname === '/breakdown' 
-                    ? 'bg-emerald-500/10 text-emerald-400' 
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                }`}
-              >
-                <Table2 className="w-4 h-4" />
-                Study Breakdown
-              </Link>
-            </nav>
-          </div>
-
-          {/* Security Notice */}
-          <div className="px-4 py-3">
-            <div 
-              className="p-3 rounded-xl"
-              style={{ 
-                backgroundColor: 'var(--warning-muted)', 
-                border: '1px solid var(--warning)',
-                borderColor: `color-mix(in srgb, var(--warning) 30%, transparent)`
-              }}
-            >
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} />
-                <div>
-                  <p className="text-xs font-medium" style={{ color: 'var(--warning)' }}>Security Notice</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                    Do NOT include PHI or patient identifiers.
+                <div className="w-9 h-9 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                  <User className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate text-slate-200">
+                    {profile?.full_name || 'Resident'}
+                  </p>
+                  <p className="text-xs truncate text-slate-500">
+                    {user?.email}
                   </p>
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Navigation */}
+          <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border-color)' }}>
+            {!collapsed && (
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
+                Navigation
+              </p>
+            )}
+            <nav className="space-y-1">
+              <Link
+                to="/dashboard"
+                onClick={onClose}
+                className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/dashboard' 
+                    ? 'bg-emerald-500/10 text-emerald-400' 
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+                title={collapsed ? "Dashboard" : undefined}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                {!collapsed && <span>Dashboard</span>}
+              </Link>
+              <Link
+                to="/breakdown"
+                onClick={onClose}
+                className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/breakdown' 
+                    ? 'bg-emerald-500/10 text-emerald-400' 
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+                title={collapsed ? "Study Breakdown" : undefined}
+              >
+                <Table2 className="w-4 h-4" />
+                {!collapsed && <span>Study Breakdown</span>}
+              </Link>
+            </nav>
           </div>
+
+          {/* Security Notice - hidden when collapsed */}
+          {!collapsed && (
+            <div className="px-4 py-3">
+              <div 
+                className="p-3 rounded-xl"
+                style={{ 
+                  backgroundColor: 'var(--warning-muted)', 
+                  border: '1px solid var(--warning)',
+                  borderColor: `color-mix(in srgb, var(--warning) 30%, transparent)`
+                }}
+              >
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} />
+                  <div>
+                    <p className="text-xs font-medium" style={{ color: 'var(--warning)' }}>Security Notice</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                      Do NOT include PHI or patient identifiers.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex-1 p-4 space-y-2 overflow-y-auto">
             {/* Goal Setting */}
-            <div className="mb-4">
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className="w-full flex items-center justify-between p-3 rounded-xl transition-colors interactive-item"
-              >
-                <div className="flex items-center gap-3">
-                  <Target className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
-                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Daily Goal</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono" style={{ color: 'var(--accent-primary)' }}>{goalRvuPerDay}</span>
-                  <ChevronDown 
-                    className={`w-4 h-4 transition-transform ${showSettings ? 'rotate-180' : ''}`}
-                    style={{ color: 'var(--text-muted)' }}
-                  />
-                </div>
-              </button>
-              {showSettings && (
-                <div 
-                  className="mt-2 p-4 rounded-xl animate-slide-down space-y-4"
-                  style={{ backgroundColor: 'var(--bg-tertiary)' }}
+            {!collapsed && (
+              <div className="mb-4">
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="w-full flex items-center justify-between p-3 rounded-xl transition-colors interactive-item"
                 >
+                  <div className="flex items-center gap-3">
+                    <Target className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Daily Goal</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono" style={{ color: 'var(--accent-primary)' }}>{goalRvuPerDay}</span>
+                    <ChevronDown 
+                      className={`w-4 h-4 transition-transform ${showSettings ? 'rotate-180' : ''}`}
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                  </div>
+                </button>
+                {showSettings && (
+                  <div 
+                    className="mt-2 p-4 rounded-xl animate-slide-down space-y-4"
+                    style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                  >
                   <div>
                     <label className="text-xs block mb-2" style={{ color: 'var(--text-muted)' }}>
                       RVUs per Day Target
@@ -450,34 +473,36 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       </p>
                     </div>
                   )}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Date/Time Filters */}
-            <div className="mb-2">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="w-full flex items-center justify-between p-3 rounded-xl transition-colors interactive-item"
-              >
-                <div className="flex items-center gap-3">
-                  <Filter className="w-5 h-5" style={{ color: hasActiveFilters ? 'var(--accent-primary)' : 'var(--text-muted)' }} />
-                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Filters</span>
-                  {hasActiveFilters && (
-                    <span 
-                      className="text-[10px] px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: 'var(--accent-primary)', color: 'white' }}
-                    >
-                      Active
-                    </span>
-                  )}
-                </div>
-                <ChevronDown 
-                  className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`}
-                  style={{ color: 'var(--text-muted)' }}
-                />
-              </button>
-              {showFilters && (
+            {!collapsed && (
+              <div className="mb-2">
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="w-full flex items-center justify-between p-3 rounded-xl transition-colors interactive-item"
+                >
+                  <div className="flex items-center gap-3">
+                    <Filter className="w-5 h-5" style={{ color: hasActiveFilters ? 'var(--accent-primary)' : 'var(--text-muted)' }} />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Filters</span>
+                    {hasActiveFilters && (
+                      <span 
+                        className="text-[10px] px-1.5 py-0.5 rounded-full"
+                        style={{ backgroundColor: 'var(--accent-primary)', color: 'white' }}
+                      >
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown 
+                    className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`}
+                    style={{ color: 'var(--text-muted)' }}
+                  />
+                </button>
+                {showFilters && (
                 <div 
                   className="mt-2 p-4 rounded-xl animate-slide-down space-y-4"
                   style={{ backgroundColor: 'var(--bg-tertiary)' }}
@@ -670,28 +695,32 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </div>
 
             {/* Upload Data */}
-            <button
-              onClick={() => setShowUpload(!showUpload)}
-              className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors interactive-item"
-            >
-              <Upload className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Upload Data</span>
-              <ChevronDown 
-                className={`w-4 h-4 ml-auto transition-transform ${showUpload ? 'rotate-180' : ''}`}
-                style={{ color: 'var(--text-muted)' }}
-              />
-            </button>
-            {showUpload && (
-              <div 
-                className="p-4 rounded-xl animate-slide-down"
-                style={{ backgroundColor: 'var(--bg-tertiary)' }}
-              >
-                <FileUpload compact />
-              </div>
+            {!collapsed && (
+              <>
+                <button
+                  onClick={() => setShowUpload(!showUpload)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors interactive-item"
+                >
+                  <Upload className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Upload Data</span>
+                  <ChevronDown 
+                    className={`w-4 h-4 ml-auto transition-transform ${showUpload ? 'rotate-180' : ''}`}
+                    style={{ color: 'var(--text-muted)' }}
+                  />
+                </button>
+                {showUpload && (
+                  <div 
+                    className="p-4 rounded-xl animate-slide-down"
+                    style={{ backgroundColor: 'var(--bg-tertiary)' }}
+                  >
+                    <FileUpload compact />
+                  </div>
+                )}
+              </>
             )}
 
             {/* Saved Data / Upload History - only show when there are actual records */}
-            {records.length > 0 && uploadHistory.length > 0 && (
+            {!collapsed && records.length > 0 && uploadHistory.length > 0 && (
               <div 
                 className="mt-2 p-3 rounded-xl"
                 style={{ 
@@ -769,20 +798,22 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <button
               onClick={handleExportPDF}
               disabled={!metrics}
-              className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
+              className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item`}
+              title={collapsed ? "Export PDF Report" : undefined}
             >
               <FileText className="w-5 h-5" style={{ color: 'var(--info)' }} />
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export PDF Report</span>
+              {!collapsed && <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export PDF Report</span>}
             </button>
 
             {/* Export CSV */}
             <button
               onClick={handleExportCSV}
               disabled={loading}
-              className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
+              className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item`}
+              title={collapsed ? "Export CSV Data" : undefined}
             >
               <Download className="w-5 h-5" style={{ color: 'var(--info)' }} />
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export CSV Data</span>
+              {!collapsed && <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export CSV Data</span>}
             </button>
 
             {/* Clear Data */}
@@ -790,32 +821,36 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <button
                 onClick={handleClearData}
                 disabled={loading}
-                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50"
+                className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} p-3 rounded-xl transition-colors disabled:opacity-50`}
                 style={{ color: 'var(--danger)' }}
+                title={collapsed ? "Clear All Data" : undefined}
               >
                 <Trash2 className="w-5 h-5" />
-                <span className="text-sm font-medium">Clear All Data</span>
+                {!collapsed && <span className="text-sm font-medium">Clear All Data</span>}
               </button>
             )}
           </div>
 
           {/* Footer */}
           <div className="p-4" style={{ borderTop: '1px solid var(--border-color)' }}>
-            <div className="text-xs text-center mb-3" style={{ color: 'var(--text-muted)' }}>
-              {records.length > 0 && (
-                <span>{records.length.toLocaleString()} records loaded</span>
-              )}
-            </div>
+            {!collapsed && (
+              <div className="text-xs text-center mb-3" style={{ color: 'var(--text-muted)' }}>
+                {records.length > 0 && (
+                  <span>{records.length.toLocaleString()} records loaded</span>
+                )}
+              </div>
+            )}
             <button
               onClick={signOut}
-              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl transition-colors"
+              className={`w-full flex items-center ${collapsed ? 'justify-center' : 'justify-center gap-2'} p-3 rounded-xl transition-colors`}
               style={{ 
                 border: '1px solid var(--border-color)',
                 color: 'var(--text-secondary)'
               }}
+              title={collapsed ? "Sign Out" : undefined}
             >
               <LogOut className="w-4 h-4" />
-              <span className="text-sm">Sign Out</span>
+              {!collapsed && <span className="text-sm">Sign Out</span>}
             </button>
           </div>
         </div>

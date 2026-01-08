@@ -37,10 +37,15 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen bg-slate-950">
       {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar 
+        isOpen={sidebarOpen} 
+        onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
 
       {/* Main Content */}
-      <div className="flex-1 lg:ml-72 bg-slate-950">
+      <div className={`flex-1 bg-slate-950 transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-72'}`}>
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-40 px-4 py-3 bg-slate-900 border-b border-slate-800">
           <div className="flex items-center justify-between">

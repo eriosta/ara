@@ -116,7 +116,9 @@ export default function App() {
           path="/auth"
           element={
             <PublicRoute>
-              <AuthPage />
+              <div className="animate-fade-in">
+                <AuthPage />
+              </div>
             </PublicRoute>
           }
         />
@@ -124,7 +126,9 @@ export default function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <Dashboard />
+              <div className="animate-fade-in">
+                <Dashboard />
+              </div>
             </ProtectedRoute>
           }
         />
@@ -132,7 +136,9 @@ export default function App() {
           path="/breakdown"
           element={
             <ProtectedRoute>
-              <BreakdownPage />
+              <div className="animate-fade-in">
+                <BreakdownPage />
+              </div>
             </ProtectedRoute>
           }
         />

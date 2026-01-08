@@ -30,8 +30,10 @@ interface ModalityData {
 
 export default function BreakdownPage() {
   const { user } = useAuthStore()
-  const { records, filteredRecords, fetchRecords } = useDataStore()
+  const { records, filteredRecords, fetchRecords, loading } = useDataStore()
   const [initialFetchDone, setInitialFetchDone] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   
   // Filter states
   const [selectedModalities, setSelectedModalities] = useState<Set<string>>(new Set())
@@ -280,7 +282,31 @@ export default function BreakdownPage() {
     return `bg-transparent ${c.text} ${c.border}`
   }
 
-  if (activeRecords.length === 0) {
+  // Show loading state
+  if (loading && records.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-950 p-6">
+        <div className="max-w-7xl mx-auto">
+          <Link 
+            to="/dashboard" 
+            className="inline-flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Dashboard
+          </Link>
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="w-10 h-10 border-2 border-slate-700 border-t-emerald-400 rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-slate-500">Loading your data...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show empty state only if not loading and no data
+  if (activeRecords.length === 0 && !loading) {
     return (
       <div className="min-h-screen bg-slate-950 p-6">
         <div className="max-w-7xl mx-auto">
@@ -302,48 +328,109 @@ export default function BreakdownPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex">
-      {/* Left Sidebar - Filters */}
-      <div className="w-64 flex-shrink-0 border-r border-slate-800 bg-slate-900/50 p-4 overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-            <Filter className="w-4 h-4" />
-            Filters
-          </h2>
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="text-xs text-slate-500 hover:text-white flex items-center gap-1"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Clear
-            </button>
-          )}
-        </div>
+    <div className="min-h-screen bg-slate-950 flex flex-col lg:flex-row">
+      {/* Mobile Header */}
+      <header className="lg:hidden sticky top-0 z-30 px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+        <Link 
+          to="/dashboard" 
+          className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="text-sm">Dashboard</span>
+        </Link>
+        <h1 className="text-lg font-display font-bold">
+          <span className="text-white">Study</span>
+          <span className="text-emerald-400"> Breakdown</span>
+        </h1>
+        <button
+          onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+          className="p-2 rounded-lg transition-colors bg-slate-800 hover:bg-slate-700"
+        >
+          <Filter className={`w-5 h-5 ${mobileFiltersOpen ? 'text-emerald-400' : 'text-slate-400'}`} />
+        </button>
+      </header>
 
-        {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-8 pr-8 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-emerald-500"
-          />
-          {searchTerm && (
+      {/* Mobile Overlay */}
+      {mobileFiltersOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 bg-black/50 z-30"
+          onClick={() => setMobileFiltersOpen(false)}
+        />
+      )}
+
+      {/* Left Sidebar - Filters */}
+      <div className={`
+        ${sidebarCollapsed ? 'w-0 lg:w-16' : 'w-full lg:w-64'} 
+        flex-shrink-0 border-r border-slate-800 bg-slate-900/50 
+        overflow-hidden transition-all duration-300 ease-out
+        ${mobileFiltersOpen ? 'block' : 'hidden lg:block'}
+        lg:relative fixed lg:static inset-0 z-40 lg:z-auto
+      `}>
+        <div className="h-full overflow-y-auto p-4">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            {!sidebarCollapsed && (
+              <>
+                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  Filters
+                </h2>
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-xs text-slate-500 hover:text-white flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Clear
+                  </button>
+                )}
+              </>
+            )}
+            {/* Collapse button - desktop only */}
             <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden lg:block p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+              title={sidebarCollapsed ? "Expand filters" : "Collapse filters"}
+            >
+              {sidebarCollapsed ? (
+                <ChevronRight className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4 rotate-[-90deg]" />
+              )}
+            </button>
+            {/* Close button - mobile only */}
+            <button
+              onClick={() => setMobileFiltersOpen(false)}
+              className="lg:hidden p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
-          )}
-        </div>
+          </div>
 
-        {/* Modality Filters */}
-        <div className="mb-6">
+        {/* Search - hidden when collapsed */}
+        {!sidebarCollapsed && (
+          <>
+            <div className="relative mb-4">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:border-emerald-500"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Modality Filters */}
+            <div className="mb-6">
           <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
             Modality
           </h3>
@@ -390,22 +477,26 @@ export default function BreakdownPage() {
           </div>
         </div>
 
-        {/* Summary Stats */}
-        <div className="pt-4 border-t border-slate-800">
-          <div className="text-xs text-slate-500 mb-2">
-            {hasActiveFilters ? 'Filtered' : 'Total'}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-slate-800/50 rounded-lg p-2">
-              <div className="text-lg font-bold text-white">{filteredTotals.count.toLocaleString()}</div>
-              <div className="text-xs text-slate-500">studies</div>
-            </div>
-            <div className="bg-slate-800/50 rounded-lg p-2">
-              <div className="text-lg font-bold text-emerald-400">{filteredTotals.totalRvu.toFixed(1)}</div>
-              <div className="text-xs text-slate-500">RVUs</div>
-            </div>
-          </div>
-        </div>
+            {/* Summary Stats */}
+            {!sidebarCollapsed && (
+              <div className="pt-4 border-t border-slate-800">
+                <div className="text-xs text-slate-500 mb-2">
+                  {hasActiveFilters ? 'Filtered' : 'Total'}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-slate-800/50 rounded-lg p-2">
+                    <div className="text-lg font-bold text-white">{filteredTotals.count.toLocaleString()}</div>
+                    <div className="text-xs text-slate-500">studies</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-2">
+                    <div className="text-lg font-bold text-emerald-400">{filteredTotals.totalRvu.toFixed(1)}</div>
+                    <div className="text-xs text-slate-500">RVUs</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Data Quality */}
         {dataQualityIssues.totalIssues > 0 && (
@@ -431,14 +522,15 @@ export default function BreakdownPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
+      <div className={`flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-0' : ''}`}>
+        <div className="p-4 lg:p-6">
+          {/* Header - Desktop only */}
+          <div className="hidden lg:flex items-center gap-4 mb-6">
             <Link 
               to="/dashboard" 
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
-            <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-5 h-5" />
             </Link>
             <div>
             <h1 className="text-2xl font-display font-bold text-white">Study Breakdown</h1>
@@ -727,6 +819,7 @@ export default function BreakdownPage() {
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   )
