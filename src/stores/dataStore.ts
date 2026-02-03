@@ -316,13 +316,21 @@ export const useDataStore = create<DataState>((set, get) => ({
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
 
-      // Check for existing records with matching timestamps
+      // Check for existing records with matching timestamps (batch to avoid query size limits)
       const timestamps = [...new Set(recordsToInsert.map(r => r.dictation_datetime))]
-      const { data: existingRecords } = await supabase
-        .from('rvu_records')
-        .select('dictation_datetime, exam_description')
-        .eq('user_id', userId)
-        .in('dictation_datetime', timestamps.slice(0, 200)) // Limit to avoid query size issues
+      const existingRecords: { dictation_datetime: string; exam_description: string }[] = []
+      const queryBatchSize = 200
+      for (let i = 0; i < timestamps.length; i += queryBatchSize) {
+        const batch = timestamps.slice(i, i + queryBatchSize)
+        const { data } = await supabase
+          .from('rvu_records')
+          .select('dictation_datetime, exam_description')
+          .eq('user_id', userId)
+          .in('dictation_datetime', batch)
+        if (data) {
+          existingRecords.push(...data)
+        }
+      }
 
       const existingMap = new Map<string, string>()
       if (existingRecords) {
