@@ -4,6 +4,28 @@ import { supabase } from '@/lib/supabase'
 import { processRawData, modalityFromDesc, examFromDesc, bodyPartsFromDesc, RVURecord, ProcessedMetrics, DailyData, HourlyData, CaseMixData } from '@/lib/dataProcessing'
 import { DEV_MODE, generateMockRecords } from '@/lib/mockData'
 
+// Supabase returns max 1000 rows per query by default.
+// This helper paginates through all rows to fetch the complete dataset.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAllRows<T = any>(
+  query: { range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }> }
+): Promise<{ data: T[] | null; error: any }> {
+  const PAGE_SIZE = 1000
+  const allData: T[] = []
+  let offset = 0
+
+  while (true) {
+    const { data, error } = await query.range(offset, offset + PAGE_SIZE - 1)
+    if (error) return { data: null, error }
+    if (!data || data.length === 0) break
+    allData.push(...(data as T[]))
+    if (data.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+
+  return { data: allData, error: null }
+}
+
 export interface SuggestedGoals {
   conservative: number      // 50th percentile (median)
   moderate: number          // 65th percentile  
@@ -139,11 +161,13 @@ export const useDataStore = create<DataState>((set, get) => ({
   checkForDuplicates: async (userId: string) => {
     try {
       // Get all records for this user
-      const { data: records, error } = await supabase
-        .from('rvu_records')
-        .select('dictation_datetime, exam_description, wrvu_estimate')
-        .eq('user_id', userId)
-        .order('dictation_datetime', { ascending: true })
+      const { data: records, error } = await fetchAllRows(
+        supabase
+          .from('rvu_records')
+          .select('dictation_datetime, exam_description, wrvu_estimate')
+          .eq('user_id', userId)
+          .order('dictation_datetime', { ascending: true })
+      )
 
       if (error || !records || records.length === 0) {
         set({ falseDuplicates: [] })
@@ -255,11 +279,13 @@ export const useDataStore = create<DataState>((set, get) => ({
         return
       }
 
-      const { data, error } = await supabase
-        .from('rvu_records')
-        .select('*')
-        .eq('user_id', userId)
-        .order('dictation_datetime', { ascending: true })
+      const { data, error } = await fetchAllRows(
+        supabase
+          .from('rvu_records')
+          .select('*')
+          .eq('user_id', userId)
+          .order('dictation_datetime', { ascending: true })
+      )
 
       if (!error && data) {
         const records: RVURecord[] = data.map(r => ({
@@ -467,10 +493,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({ loading: true })
     try {
       // Fetch all records
-      const { data, error: fetchError } = await supabase
-        .from('rvu_records')
-        .select('id, exam_description')
-        .eq('user_id', userId)
+      const { data, error: fetchError } = await fetchAllRows(
+        supabase
+          .from('rvu_records')
+          .select('id, exam_description')
+          .eq('user_id', userId)
+      )
 
       if (fetchError || !data) {
         return { error: fetchError as Error | null, count: 0 }
@@ -515,11 +543,13 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   // Export CSV directly from database
   exportCSVFromDB: async (userId: string) => {
-    const { data, error } = await supabase
-      .from('rvu_records')
-      .select('dictation_datetime, exam_description, wrvu_estimate, modality, exam_type, body_part')
-      .eq('user_id', userId)
-      .order('dictation_datetime', { ascending: true })
+    const { data, error } = await fetchAllRows(
+      supabase
+        .from('rvu_records')
+        .select('dictation_datetime, exam_description, wrvu_estimate, modality, exam_type, body_part')
+        .eq('user_id', userId)
+        .order('dictation_datetime', { ascending: true })
+    )
 
     if (error || !data) {
       return null
