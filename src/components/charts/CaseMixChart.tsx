@@ -4,6 +4,7 @@ import {
   Tooltip, ResponsiveContainer, Cell 
 } from 'recharts'
 import { Layers } from 'lucide-react'
+import InfoTooltip from '../InfoTooltip'
 
 const COLORS = ['#22c55e', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899']
 
@@ -35,8 +36,9 @@ export default function CaseMixChart() {
           <Layers className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
         </div>
         <div>
-          <h3 className="text-lg font-display font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h3 className="text-lg font-display font-semibold flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
             Top Case Mix
+            <InfoTooltip text="Highest-RVU study type combinations. Shows where most of your productivity comes from." />
           </h3>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             Modality & Body Part combinations

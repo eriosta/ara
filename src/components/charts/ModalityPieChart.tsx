@@ -3,6 +3,7 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer 
 } from 'recharts'
 import { PieChart as PieChartIcon } from 'lucide-react'
+import InfoTooltip from '../InfoTooltip'
 
 const COLORS = [
   '#22c55e', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899',
@@ -60,8 +61,9 @@ export default function ModalityPieChart() {
           <PieChartIcon className="w-5 h-5" style={{ color: '#ec4899' }} />
         </div>
         <div>
-          <h3 className="text-lg font-display font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h3 className="text-lg font-display font-semibold flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
             RVUs by Modality
+            <InfoTooltip text="Work distribution across imaging modalities. Identifies your specialty focus areas." />
           </h3>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             Total: {total.toFixed(1)} RVUs

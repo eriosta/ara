@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import Sidebar from '@/components/Sidebar'
@@ -9,14 +9,19 @@ import CaseMixChart from '@/components/charts/CaseMixChart'
 import ModalityPieChart from '@/components/charts/ModalityPieChart'
 import HeatmapChart from '@/components/charts/HeatmapChart'
 import EmptyState from '@/components/EmptyState'
+import DashboardToolbar from '@/components/DashboardToolbar'
+import ProductTour, { DASHBOARD_STEPS } from '@/components/ProductTour'
 import { Menu } from 'lucide-react'
+
+const TOUR_KEY = 'myrvu-tour-completed'
 
 export default function Dashboard() {
   const { user, profile, fetchProfile } = useAuthStore()
   const { records, metrics, fetchRecords, setGoalRvuPerDay, loading } = useDataStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(224)
   const [initialFetchDone, setInitialFetchDone] = useState(false)
+  const [tourRunning, setTourRunning] = useState(false)
 
   // Only fetch once when user is available
   useEffect(() => {
@@ -35,18 +40,34 @@ export default function Dashboard() {
 
   const hasData = records.length > 0 && metrics
 
+  // Auto-start tour on first visit once data is loaded
+  useEffect(() => {
+    if (hasData && !localStorage.getItem(TOUR_KEY)) {
+      setTourRunning(true)
+    }
+  }, [hasData])
+
+  const handleTourClose = useCallback(() => {
+    setTourRunning(false)
+    localStorage.setItem(TOUR_KEY, 'true')
+  }, [])
+
+  const handleStartTour = useCallback(() => {
+    setTourRunning(true)
+  }, [])
+
   return (
     <div className="flex min-h-screen bg-slate-950">
       {/* Sidebar */}
-      <Sidebar 
-        isOpen={sidebarOpen} 
+      <Sidebar
+        isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        width={sidebarWidth}
+        onWidthChange={setSidebarWidth}
       />
 
       {/* Main Content */}
-      <div className={`flex-1 bg-slate-950 transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-72'}`}>
+      <div className="flex-1 bg-slate-950 max-lg:!ml-0" style={{ marginLeft: `${sidebarWidth}px` }}>
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-40 px-4 py-3 bg-slate-900 border-b border-slate-800">
           <div className="flex items-center justify-between">
@@ -64,6 +85,9 @@ export default function Dashboard() {
           </div>
         </header>
 
+        {/* Toolbar: goal + filters */}
+        {hasData && <DashboardToolbar onStartTour={handleStartTour} />}
+
         {/* Dashboard Content */}
         <main className="p-4 lg:p-6">
           {loading && records.length === 0 ? (
@@ -80,24 +104,44 @@ export default function Dashboard() {
               {/* Metrics Overview */}
               <MetricsOverview />
 
-              {/* Daily Trend Chart */}
-              <DailyTrendChart />
-
-              {/* Two Column Layout */}
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <HourlyEfficiencyChart />
-                <HeatmapChart />
+              {/* Section: Trends */}
+              <div className="flex items-center gap-3 pt-2">
+                <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Trends</span>
+                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+              </div>
+              <div data-tour="chart-daily">
+                <DailyTrendChart />
               </div>
 
-              {/* Case Mix Analysis */}
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <CaseMixChart />
-                <ModalityPieChart />
+              {/* Section: Patterns */}
+              <div data-tour="section-patterns">
+                <div className="flex items-center gap-3 pt-2 mb-6">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Patterns</span>
+                  <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <HourlyEfficiencyChart />
+                  <HeatmapChart />
+                </div>
+              </div>
+
+              {/* Section: Case Analysis */}
+              <div data-tour="section-case-analysis">
+                <div className="flex items-center gap-3 pt-2 mb-6">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Case Analysis</span>
+                  <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <CaseMixChart />
+                  <ModalityPieChart />
+                </div>
               </div>
             </div>
           )}
         </main>
       </div>
+
+      {hasData && <ProductTour steps={DASHBOARD_STEPS} run={tourRunning} onClose={handleTourClose} />}
     </div>
   )
 }

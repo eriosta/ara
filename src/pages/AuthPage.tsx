@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
-import { Mail, Lock, User, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react'
+import { Mail, Lock, User, ArrowRight, CheckCircle } from 'lucide-react'
 import Logo from '@/components/Logo'
 import toast from 'react-hot-toast'
 
@@ -181,13 +181,6 @@ export default function AuthPage() {
           </div>
         </div>
 
-        {/* Security Notice */}
-        <div className="mt-4 p-3 rounded-xl flex items-start gap-2 bg-amber-500/10 border border-amber-500/20">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
-          <p className="text-xs leading-relaxed text-amber-200/80">
-            <strong>Security:</strong> Do not include PHI or patient identifiers.
-          </p>
-        </div>
       </div>
     </div>
   )

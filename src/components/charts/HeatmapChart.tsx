@@ -1,5 +1,6 @@
 import { useDataStore } from '@/stores/dataStore'
 import { Calendar, Clock } from 'lucide-react'
+import InfoTooltip from '../InfoTooltip'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const HOURS = Array.from({ length: 17 }, (_, i) => i + 6) // 6 AM to 10 PM
@@ -37,8 +38,9 @@ export default function HeatmapChart() {
             <Calendar className="w-5 h-5 text-cyan-400" />
           </div>
           <div>
-            <h3 className="text-lg font-display font-semibold text-slate-100">
+            <h3 className="text-lg font-display font-semibold text-slate-100 flex items-center gap-1.5">
               Schedule Optimization
+              <InfoTooltip text="RVU output by day and hour. Darker cells = more productive. Identifies your best time slots for complex cases." />
             </h3>
             <p className="text-sm text-slate-500">
               Peak hours for complex cases

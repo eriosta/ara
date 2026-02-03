@@ -4,6 +4,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine, Area, ComposedChart 
 } from 'recharts'
 import { TrendingUp, Calendar } from 'lucide-react'
+import InfoTooltip from '../InfoTooltip'
 import { format } from 'date-fns'
 
 export default function DailyTrendChart() {
@@ -34,8 +35,9 @@ export default function DailyTrendChart() {
             <TrendingUp className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
           </div>
           <div>
-            <h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+            <h3 className="font-semibold flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
               Daily Performance
+              <InfoTooltip text="Track daily output against your goal. The 7-day moving average smooths variation — look for sustained trends above or below target." />
             </h3>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               Target: {goalRvuPerDay} RVUs/day

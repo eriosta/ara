@@ -4,6 +4,7 @@ import {
   Tooltip, ResponsiveContainer, Cell, ReferenceLine 
 } from 'recharts'
 import { Clock } from 'lucide-react'
+import InfoTooltip from '../InfoTooltip'
 
 export default function HourlyEfficiencyChart() {
   const { hourlyData, goalRvuPerDay } = useDataStore()
@@ -37,8 +38,9 @@ export default function HourlyEfficiencyChart() {
           <Clock className="w-5 h-5" style={{ color: 'var(--info)' }} />
         </div>
         <div>
-          <h3 className="text-lg font-display font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <h3 className="text-lg font-display font-semibold flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
             Hourly Efficiency
+            <InfoTooltip text="Productivity by hour of day. Green bars meet your hourly target. Schedule complex reads during your peak hours." />
           </h3>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             Target: {hourlyTarget.toFixed(1)} RVUs/hour
