@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/authStore'
 import AuthPage from '@/pages/AuthPage'
 import Dashboard from '@/pages/Dashboard'
 import BreakdownPage from '@/pages/BreakdownPage'
+import AcgmePage from '@/pages/AcgmePage'
+import ReferencePage from '@/pages/ReferencePage'
 import LoadingScreen from '@/components/LoadingScreen'
 import toast from 'react-hot-toast'
 
@@ -138,6 +140,26 @@ export default function App() {
             <ProtectedRoute>
               <div className="animate-fade-in">
                 <BreakdownPage />
+              </div>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/acgme"
+          element={
+            <ProtectedRoute>
+              <div className="animate-fade-in">
+                <AcgmePage />
+              </div>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reference"
+          element={
+            <ProtectedRoute>
+              <div className="animate-fade-in">
+                <ReferencePage />
               </div>
             </ProtectedRoute>
           }

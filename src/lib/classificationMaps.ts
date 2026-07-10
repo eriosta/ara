@@ -162,6 +162,17 @@ export const MODALITY_RULES: ClassificationRule[] = [
 
   // ========== FLUOROSCOPY (Before CT/US) ==========
   {
+    priority: 39,
+    // Lumbar puncture / myelogram are fluoroscopy-guided (catches "SP Lumbar
+    // Puncture", "Myelogram" without an explicit "FL " prefix). Excludes CT/MRI-guided.
+    pattern: /LUMBAR\s+PUNCTURE|MYELOGRAM/i,
+    result: 'Fluoroscopy',
+    description: 'Lumbar puncture / myelogram (fluoroscopy-guided)',
+    conditions: {
+      mustNotInclude: ['\\bCT\\b', 'MRI']
+    }
+  },
+  {
     priority: 40,
     pattern: (text: string) => {
       return /FL\s/i.test(text) && /LUMBAR\s+PUNCTURE/i.test(text)
@@ -195,29 +206,31 @@ export const MODALITY_RULES: ClassificationRule[] = [
   // ========== CT VARIATIONS ==========
   {
     priority: 50,
-    pattern: (text: string) => {
-      return /CT/i.test(text) && /RECTAL/i.test(text) && /CONTRAST/i.test(text)
-    },
-    result: 'CT',
-    description: 'CT with rectal contrast (NOT CTA)',
-    conditions: {
-      mustNotInclude: ['CTA']
-    }
-  },
-  {
-    priority: 51,
-    pattern: /CTA/i,
+    // Word-boundary \bCTA\b so "reCTAl" no longer matches, plus spelled-out
+    // "CT Angiography"/"CT Angiogram" which the literal "CTA" pattern missed.
+    pattern: (text: string) =>
+      /\bCTA\b/i.test(text) ||
+      ((/\bCT\b/i.test(text) || /COMPUTED\s+TOMOGRAPH/i.test(text)) && /ANGIOGRAPH|ANGIOGRAM/i.test(text)),
     result: 'CTA',
-    description: 'CT Angiography'
+    description: 'CT Angiography (\\bCTA\\b or spelled-out CT angiography); avoids the "RECTAL" false positive',
   },
   {
     priority: 52,
     pattern: /(CT\s|CT$|COMPUTED|CAT\s+SCAN)/i,
     result: 'CT',
-    description: 'General CT'
+    description: 'General CT (includes CT with rectal contrast, which is not a CTA)'
   },
 
   // ========== ULTRASOUND ==========
+  {
+    priority: 59,
+    // Doppler studies are inherently duplex ultrasound, even when the words
+    // "ultrasound"/"US"/"duplex" are absent (e.g. "CAROTID DOPPLER", "RENAL
+    // ARTERY DOPPLER"). Exclude echocardiography, which also reports Doppler.
+    pattern: (text: string) => /DOPPLER/i.test(text) && !/ECHO/i.test(text),
+    result: 'US - Duplex',
+    description: 'Doppler → duplex ultrasound (not "Other")'
+  },
   {
     priority: 60,
     pattern: /(DUPLEX|DUP\s)/i,
@@ -232,12 +245,13 @@ export const MODALITY_RULES: ClassificationRule[] = [
   },
   {
     priority: 62,
-    pattern: /(PROCEDURE|GUIDED)/i,
+    // US-guided procedure: needs a procedure word AND any ultrasound token.
+    // (Previously required BOTH "US" and "ULTRASOUND" via mustInclude, so
+    // "US Guided Paracentesis" was misfiled as a plain US study.)
+    pattern: (text: string) =>
+      /(PROCEDURE|GUIDED)/i.test(text) && /(\bUS\b|ULTRASOUND|SONOGRAM|SONO\s)/i.test(text),
     result: 'US Procedure',
     description: 'US-guided procedures',
-    conditions: {
-      mustInclude: ['US', 'ULTRASOUND']
-    }
   },
   {
     priority: 63,
@@ -288,7 +302,8 @@ export const MODALITY_RULES: ClassificationRule[] = [
     pattern: (text: string) => {
       const hasViews = /\d+\s*VIEWS?/i.test(text) || /(AP|PA).*(LAT|LATERAL)/i.test(text)
       const hasBodyPart = /(CHEST|ABDOMEN|KNEE|HAND|FOOT|SHOULDER|ELBOW|ANKLE|WRIST|HIP|FEMUR|TIBIA|HUMERUS|FINGER|TOE|SPINE|PELVIS|CLAVICLE|RIBS|SINUS|TEMPORAL|FACIAL|ORBITS|SKULL|SACRUM|COCCYX|LUMBOSACRAL|KNEES)/i.test(text)
-      const noOtherModality = !/(CT|MRI|US|ULTRASOUND|FLUORO|PET|SPECT|NM\s)/i.test(text)
+      // Word-boundary tokens so "humerUS" / "reCTAl" don't read as US / CT modality.
+      const noOtherModality = !/\b(CT|CTA|MR|MRI|MRA|MRV|US|ULTRASOUND|FLUORO|FL|PET|SPECT|NM|DOPPLER)\b/i.test(text)
       return hasViews && hasBodyPart && noOtherModality
     },
     result: 'Radiography',
@@ -299,7 +314,7 @@ export const MODALITY_RULES: ClassificationRule[] = [
     pattern: (text: string) => {
       const hasBilateral = /BILATERAL/i.test(text)
       const hasExtremity = /(KNEE|KNEES|HIP|HIPS)/i.test(text)
-      const noOtherModality = !/(CT|MRI|US|ULTRASOUND|FLUORO|PET|SPECT|NM\s)/i.test(text)
+      const noOtherModality = !/\b(CT|CTA|MR|MRI|MRA|MRV|US|ULTRASOUND|FLUORO|FL|PET|SPECT|NM|DOPPLER)\b/i.test(text)
       return hasBilateral && hasExtremity && noOtherModality
     },
     result: 'Radiography',
@@ -310,7 +325,7 @@ export const MODALITY_RULES: ClassificationRule[] = [
     pattern: (text: string) => {
       const hasStanding = /STANDING/i.test(text)
       const hasExtremity = /(KNEE|HIP|SPINE)/i.test(text)
-      const noOtherModality = !/(CT|MRI|US|ULTRASOUND|FLUORO|PET|SPECT|NM\s)/i.test(text)
+      const noOtherModality = !/\b(CT|CTA|MR|MRI|MRA|MRV|US|ULTRASOUND|FLUORO|FL|PET|SPECT|NM|DOPPLER)\b/i.test(text)
       return hasStanding && hasExtremity && noOtherModality
     },
     result: 'Radiography',
@@ -358,10 +373,22 @@ export const BODY_PART_RULES: ClassificationRule[] = [
   {
     priority: 2,
     pattern: (text: string) => {
-      return /(THYROID|PARATHYROID)/i.test(text) && !/(ULTRASOUND|US\s)/i.test(text)
+      return /(THYROID|PARATHYROID|THYROGEN)/i.test(text) && !/(ULTRASOUND|US\s)/i.test(text)
     },
     result: 'Head/Neck',
-    description: 'Thyroid/Parathyroid (nuclear, not US)'
+    description: 'Thyroid/Parathyroid/Thyrogen (nuclear, not US)'
+  },
+  {
+    priority: 3.1,
+    pattern: /SHUNT/i,
+    result: 'Head/Neck',
+    description: 'CSF shunt patency studies (neuro)'
+  },
+  {
+    priority: 3.2,
+    pattern: /PLUVICTO/i,
+    result: 'Whole Body',
+    description: 'Pluvicto (Lu-177) systemic radioligand therapy'
   },
   {
     priority: 3,
@@ -406,21 +433,39 @@ export const BODY_PART_RULES: ClassificationRule[] = [
   },
   {
     priority: 9,
-    pattern: /(GASTRIC\s+EMPTYING|STOMACH)/i,
+    pattern: /(GASTRIC\s+EMPT|STOMACH)/i,
     result: 'Stomach',
-    description: 'Gastric emptying'
+    description: 'Gastric emptying (matches "GASTRIC EMPTY" and "GASTRIC EMPTYING")'
   },
   {
     priority: 10,
-    pattern: /(BARIUM\s+SWALLOW|ESOPHAGUS)/i,
+    pattern: /(BARIUM\s+SWALLOW|ESOPHAGUS|UPPER\s+GI|\bUGI\b)/i,
     result: 'Stomach',
-    description: 'Barium swallow/esophagus'
+    description: 'Barium swallow / esophagus / upper GI'
   },
   {
     priority: 11,
-    pattern: /(BONE\/JOINT|BONE\s+JOINT)/i,
+    pattern: /(BONE\/JOINT|BONE\s+JOINT|BONE\s+IMAGING|BONE\s+SPECT)/i,
     result: 'Musculoskeletal',
-    description: 'Bone/Joint limited studies'
+    description: 'Bone/Joint and bone SPECT/imaging studies'
+  },
+  {
+    priority: 12,
+    pattern: /(TESTIC|SCROTUM|SCROTAL)/i,
+    result: 'Scrotum',
+    description: 'Testicular / scrotal ultrasound'
+  },
+  {
+    priority: 13,
+    pattern: /(GROIN|INGUINAL)/i,
+    result: 'Groin',
+    description: 'Groin / inguinal region'
+  },
+  {
+    priority: 14,
+    pattern: /AXILLA/i,
+    result: 'Axilla',
+    description: 'Axillary region'
   },
 
   // ========== STANDARD BODY PARTS ==========
@@ -445,27 +490,27 @@ export const BODY_PART_RULES: ClassificationRule[] = [
   },
   {
     priority: 21,
-    pattern: /(CHEST|LUNG|THORAX|PULMONARY)/i,
+    pattern: /(CHEST|LUNG|THORAX|PULMONARY|THORACENTESIS)/i,
     result: 'Chest',
-    description: 'Chest anatomy'
+    description: 'Chest anatomy (incl. thoracentesis)'
   },
   {
     priority: 22,
-    pattern: /(ABDOMEN|ABDOMINAL)/i,
+    pattern: /(ABDOMEN|ABDOMINAL|PARACENTESIS|ASCITES|\bABD\b)/i,
     result: 'Abdomen',
-    description: 'Abdomen'
+    description: 'Abdomen (incl. paracentesis, "ABD" abbreviation)'
   },
   {
     priority: 23,
-    pattern: /(PELVIS|PELVIC)/i,
+    pattern: /(PELVIS|PELVIC|TRANSVAGINAL|TRANSVESICAL|BLADDER|\bPEL\b)/i,
     result: 'Pelvis',
-    description: 'Pelvis'
+    description: 'Pelvis (incl. transvaginal, bladder, "PEL" abbreviation)'
   },
   {
     priority: 24,
-    pattern: /(SPINE|LUMBOSACRAL|L\s+SPINE|T\s+SPINE|C\s+SPINE|CERVICAL|THORACIC|LUMBAR|SACRUM|COCCYX)/i,
+    pattern: /(SPINE|LUMBOSACRAL|L\s+SPINE|T\s+SPINE|C\s+SPINE|CERVICAL|THORACIC|LUMBAR|SACRUM|COCCYX|MYELOGRAM)/i,
     result: 'Spine',
-    description: 'Spine anatomy'
+    description: 'Spine anatomy (incl. myelogram)'
   },
   {
     priority: 25,
@@ -575,6 +620,12 @@ export const BODY_PART_RULES: ClassificationRule[] = [
   },
 
   // ========== FALLBACKS ==========
+  {
+    priority: 49,
+    pattern: /SOFT\s+TISSUE/i,
+    result: 'Soft Tissue',
+    description: 'Soft-tissue ultrasound without a more specific region'
+  },
   {
     priority: 50,
     pattern: /CHEST/i,

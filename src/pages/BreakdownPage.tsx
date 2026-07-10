@@ -3,8 +3,9 @@ import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import Sidebar from '@/components/Sidebar'
 import ProductTour, { BREAKDOWN_STEPS } from '@/components/ProductTour'
-import { ChevronRight, ChevronDown, Search, X, Filter, AlertTriangle, Menu, User, HelpCircle, LogOut } from 'lucide-react'
+import { ChevronRight, ChevronDown, Search, X, Filter, AlertTriangle, Menu, User, HelpCircle, LogOut, Copy } from 'lucide-react'
 import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 
 const BREAKDOWN_TOUR_KEY = 'myrvu-breakdown-tour-completed'
 
@@ -16,6 +17,65 @@ interface StudyRecord {
   modality: string
   bodyPart: string
   examType: string
+}
+
+// Collapse a list of studies into unique exam descriptions with occurrence counts,
+// sorted most-frequent first. The classifier is deterministic per description, so a
+// single representative modality is preserved for each.
+function dedupeDescriptions(records: StudyRecord[]): { desc: string; count: number; modality: string }[] {
+  const map = new Map<string, { count: number; modality: string }>()
+  records.forEach(r => {
+    const existing = map.get(r.examDescription)
+    if (existing) existing.count++
+    else map.set(r.examDescription, { count: 1, modality: r.modality })
+  })
+  return Array.from(map.entries())
+    .map(([desc, v]) => ({ desc, count: v.count, modality: v.modality }))
+    .sort((a, b) => b.count - a.count)
+}
+
+// Builds a plain-text data-quality report a resident can paste into an email to the
+// administrator. Lists every flagged exam description (deduplicated) so classification
+// rules can be updated to cover them.
+function buildDataQualityReport(opts: {
+  userName: string
+  totalStudies: number
+  distinctIssues: number
+  issues: {
+    unknownModality: StudyRecord[]
+    otherModality: StudyRecord[]
+    unknownBodyPart: StudyRecord[]
+    lowRvu: StudyRecord[]
+  }
+}): string {
+  const { userName, totalStudies, distinctIssues, issues } = opts
+  const lines: string[] = [
+    'myRVU — Data Quality Report',
+    `Generated: ${new Date().toLocaleString('en-US')}`,
+    `Resident: ${userName}`,
+    `Studies analyzed: ${totalStudies.toLocaleString()}`,
+    `Distinct issues flagged: ${distinctIssues.toLocaleString()}`,
+    '',
+    'The exam descriptions below could not be fully auto-classified. Please forward',
+    'this report to your myRVU administrator so the classification rules can be updated.',
+  ]
+
+  const section = (title: string, records: StudyRecord[], showModality: boolean) => {
+    if (records.length === 0) return
+    lines.push('', `== ${title} (${records.length}) ==`)
+    dedupeDescriptions(records).forEach(({ desc, count, modality }) => {
+      const mod = showModality && modality ? `  [${modality}]` : ''
+      const times = count > 1 ? `  (x${count})` : ''
+      lines.push(` - ${desc}${mod}${times}`)
+    })
+  }
+
+  section('Unknown Modality', issues.unknownModality, false)
+  section('"Other" Modality — needs classification', issues.otherModality, false)
+  section('Unknown Body Part', issues.unknownBodyPart, true)
+  section('Zero RVU Studies', issues.lowRvu, true)
+
+  return lines.join('\n')
 }
 
 interface BodyPartData {
@@ -279,6 +339,39 @@ export default function BreakdownPage() {
   const handleStartTour = useCallback(() => {
     setTourRunning(true)
   }, [])
+
+  // Copy a shareable data-quality report to the clipboard
+  const handleCopyReport = useCallback(async () => {
+    const report = buildDataQualityReport({
+      userName: profile?.full_name || 'Resident',
+      totalStudies: activeRecords.length,
+      distinctIssues: dataQualityIssues.totalIssues,
+      issues: {
+        unknownModality: dataQualityIssues.unknownModality,
+        otherModality: dataQualityIssues.otherModality,
+        unknownBodyPart: dataQualityIssues.unknownBodyPart,
+        lowRvu: dataQualityIssues.lowRvu,
+      },
+    })
+
+    try {
+      await navigator.clipboard.writeText(report)
+      toast.success('Data quality report copied — paste it into an email to your administrator')
+    } catch {
+      // Fallback for browsers/contexts without the async clipboard API
+      const ta = document.createElement('textarea')
+      ta.value = report
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      let ok = false
+      try { ok = document.execCommand('copy') } catch { ok = false }
+      document.body.removeChild(ta)
+      if (ok) toast.success('Data quality report copied to clipboard')
+      else toast.error('Could not copy automatically. Please try again.')
+    }
+  }, [profile, activeRecords.length, dataQualityIssues])
 
   // Get color for modality
   const getModalityColor = (modality: string, selected: boolean = false) => {
@@ -614,12 +707,22 @@ export default function BreakdownPage() {
                   <AlertTriangle className="w-4 h-4 text-amber-400" />
                   <h3 className="text-sm font-semibold text-amber-400">Data Quality Issues</h3>
                 </div>
-                <button
-                  onClick={() => setShowDataQuality(false)}
-                  className="text-amber-400/70 hover:text-amber-400"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopyReport}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-colors"
+                    title="Copy a shareable report of these issues to send to your administrator"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy report
+                  </button>
+                  <button
+                    onClick={() => setShowDataQuality(false)}
+                    className="text-amber-400/70 hover:text-amber-400"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               <div className="p-4 space-y-4">
                 {/* Unknown Modality */}

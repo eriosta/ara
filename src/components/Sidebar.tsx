@@ -6,12 +6,13 @@ import { supabase } from '@/lib/supabase'
 import {
   X, Upload,
   FileText, Trash2, ChevronDown,
-  FileSpreadsheet, Calendar, Database, Download,
-  LayoutDashboard, Table2
+  FileSpreadsheet, Calendar, Database, RefreshCw,
+  LayoutDashboard, Table2, Target, BookOpen
 } from 'lucide-react'
 import FileUpload from './FileUpload'
 import Logo from './Logo'
 import { generatePDF } from '@/lib/pdfExport'
+import { recordsToExportRows, downloadCSV, downloadExcel } from '@/lib/exportUtils'
 import toast from 'react-hot-toast'
 
 interface UploadRecord {
@@ -55,8 +56,11 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
   }, [dragging, onWidthChange])
   const location = useLocation()
   const { user, profile } = useAuthStore()
-  const { records, metrics, clearRecords, goalRvuPerDay, dailyData, caseMixData, modalityData, exportCSVFromDB, loading } = useDataStore()
+  const { records, metrics, clearRecords, reprocessRecords, goalRvuPerDay, dailyData, caseMixData, modalityData, loading } = useDataStore()
   const [showUpload, setShowUpload] = useState(false)
+  const [showDataModal, setShowDataModal] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [reprocessing, setReprocessing] = useState(false)
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([])
 
   // Fetch upload history
@@ -129,6 +133,32 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
     }
   }
 
+  // Re-runs modality/body-part/exam-type classification on every stored study
+  // using the current rules. Needed after a classification fix so existing data
+  // (Study Breakdown, data-quality flags, charts) reflects the updated logic.
+  const handleReprocess = async () => {
+    if (!user) return
+    if (records.length === 0) {
+      toast.error('No data to re-classify. Upload some data first.')
+      return
+    }
+    if (!window.confirm(`Re-run classification on all ${records.length.toLocaleString()} studies? This updates modality/body-part labels using the latest rules and can take a moment.`)) {
+      return
+    }
+    setReprocessing(true)
+    toast.loading('Re-classifying studies…', { id: 'reprocess' })
+    try {
+      const { error, count } = await reprocessRecords(user.id)
+      if (error) toast.error(`Re-classification failed: ${error.message}`, { id: 'reprocess' })
+      else toast.success(`Re-classified ${count.toLocaleString()} studies`, { id: 'reprocess' })
+    } catch (error) {
+      console.error('Reprocess error:', error)
+      toast.error(`Re-classification failed: ${error instanceof Error ? error.message : 'Unknown error'}`, { id: 'reprocess' })
+    } finally {
+      setReprocessing(false)
+    }
+  }
+
   const handleExportPDF = () => {
     if (!metrics) {
       toast.error('No data to export')
@@ -151,35 +181,30 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
     }
   }
 
-  const handleExportCSV = async () => {
-    if (!user) {
-      toast.error('Please sign in to export data')
+  // Exports the full in-memory dataset (already loaded by the store) so it works
+  // instantly and never hangs on a database round-trip. Any failure is surfaced.
+  const handleExport = async (fmt: 'csv' | 'excel') => {
+    if (records.length === 0) {
+      toast.error('No data to export. Upload some data first.')
       return
     }
 
-    toast.loading('Fetching data from database...', { id: 'export' })
-
-    const csvContent = await exportCSVFromDB(user.id)
-
-    if (!csvContent) {
-      toast.error('No data found to export', { id: 'export' })
-      return
+    setExporting(true)
+    try {
+      const rows = recordsToExportRows(records)
+      const dateStr = new Date().toISOString().split('T')[0]
+      if (fmt === 'csv') {
+        downloadCSV(rows, `myRVU_Export_${dateStr}.csv`)
+      } else {
+        downloadExcel(rows, `myRVU_Export_${dateStr}.xlsx`)
+      }
+      toast.success(`Exported ${rows.length.toLocaleString()} records to ${fmt === 'csv' ? 'CSV' : 'Excel'}`)
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setExporting(false)
     }
-
-    const recordCount = csvContent.split('\n').length - 1
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    const dateStr = new Date().toISOString().split('T')[0]
-    link.download = `myRVU_Export_${dateStr}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
-    toast.success(`Exported ${recordCount.toLocaleString()} records to CSV`, { id: 'export' })
   }
 
   return (
@@ -259,6 +284,30 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
                 <Table2 className="w-4 h-4" />
                 <span>Study Breakdown</span>
               </Link>
+              <Link
+                to="/acgme"
+                onClick={onClose}
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/acgme'
+                    ? 'bg-emerald-500/10 text-emerald-400'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <Target className="w-4 h-4" />
+                <span>ACGME Minimums</span>
+              </Link>
+              <Link
+                to="/reference"
+                onClick={onClose}
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/reference'
+                    ? 'bg-emerald-500/10 text-emerald-400'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>Reference</span>
+              </Link>
             </nav>
           </div>
 
@@ -286,79 +335,22 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
               </div>
             )}
 
-            {/* Saved Data / Upload History */}
+            {/* Saved Data summary — opens a roomy modal instead of a cramped scroll */}
             {records.length > 0 && uploadHistory.length > 0 && (
-              <div
-                className="mt-2 p-3 rounded-xl"
-                style={{
-                  backgroundColor: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-color)'
-                }}
+              <button
+                onClick={() => setShowDataModal(true)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors interactive-item"
+                title="View and manage your uploaded files"
               >
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
-                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                    Your Saved Data
+                <Database className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
+                <div className="flex-1 min-w-0 text-left">
+                  <span className="text-sm font-medium block" style={{ color: 'var(--text-secondary)' }}>Your Saved Data</span>
+                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    {uploadHistory.reduce((sum, u) => sum + (u.records_imported || 0), 0).toLocaleString()} records · {uploadHistory.length} upload{uploadHistory.length !== 1 ? 's' : ''}
                   </span>
                 </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {uploadHistory.map((upload) => (
-                    <div
-                      key={upload.id}
-                      className="flex items-start gap-2 p-2 rounded-lg group"
-                      style={{
-                        backgroundColor: 'var(--bg-card)',
-                        border: '1px solid var(--border-color)'
-                      }}
-                    >
-                      <FileSpreadsheet className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--accent-primary)' }} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs truncate font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {upload.file_name}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] font-medium" style={{ color: 'var(--accent-primary)' }}>
-                            {upload.records_imported?.toLocaleString() || 0} records
-                          </span>
-                          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>•</span>
-                          <span className="text-[10px] flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
-                            <Calendar className="w-3 h-3" />
-                            {new Date(upload.uploaded_at).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteUpload(upload)
-                        }}
-                        disabled={deletingId === upload.id}
-                        className="p-1 rounded opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
-                        style={{ color: 'var(--danger)' }}
-                        title="Delete this upload"
-                      >
-                        {deletingId === upload.id ? (
-                          <div
-                            className="w-3 h-3 border border-t-transparent rounded-full animate-spin"
-                            style={{ borderColor: 'var(--danger)' }}
-                          />
-                        ) : (
-                          <Trash2 className="w-3 h-3" />
-                        )}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--border-color)' }}>
-                  <p className="text-[10px] text-center" style={{ color: 'var(--text-muted)' }}>
-                    Total: {uploadHistory.reduce((sum, u) => sum + (u.records_imported || 0), 0).toLocaleString()} records from {uploadHistory.length} upload{uploadHistory.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
+                <ChevronDown className="w-4 h-4 -rotate-90" style={{ color: 'var(--text-muted)' }} />
+              </button>
             )}
 
             {/* Export PDF */}
@@ -372,15 +364,31 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
               <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export PDF Report</span>
             </button>
 
-            {/* Export CSV */}
+            {/* Export raw data (Excel) */}
             <button
-              onClick={handleExportCSV}
-              disabled={loading}
+              onClick={() => handleExport('excel')}
+              disabled={exporting || records.length === 0}
               className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
+              title="Download all studies as an Excel (.xlsx) file"
             >
-              <Download className="w-5 h-5" style={{ color: 'var(--info)' }} />
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export CSV Data</span>
+              <FileSpreadsheet className="w-5 h-5" style={{ color: 'var(--info)' }} />
+              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export Excel Data</span>
             </button>
+
+            {/* Re-run classification */}
+            {records.length > 0 && (
+              <button
+                onClick={handleReprocess}
+                disabled={reprocessing || loading}
+                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
+                title="Re-classify all stored studies using the latest modality/body-part rules"
+              >
+                <RefreshCw className={`w-5 h-5 ${reprocessing ? 'animate-spin' : ''}`} style={{ color: 'var(--accent-primary)' }} />
+                <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  {reprocessing ? 'Re-classifying…' : 'Re-run Classification'}
+                </span>
+              </button>
+            )}
 
             {/* Clear Data */}
             {records.length > 0 && (
@@ -406,6 +414,82 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
           )}
         </div>
       </aside>
+
+      {/* Saved Data modal — full-size view of uploaded files */}
+      {showDataModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowDataModal(false)}
+        >
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative w-full max-w-2xl max-h-[80vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
+            style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <div className="flex items-center gap-2.5">
+                <Database className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
+                <div>
+                  <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Your Saved Data</h3>
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    {uploadHistory.reduce((sum, u) => sum + (u.records_imported || 0), 0).toLocaleString()} records across {uploadHistory.length} upload{uploadHistory.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDataModal(false)}
+                className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Upload list */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {uploadHistory.map((upload) => (
+                <div
+                  key={upload.id}
+                  className="flex items-center gap-3 p-3 rounded-xl group"
+                  style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+                >
+                  <FileSpreadsheet className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--accent-primary)' }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {upload.file_name}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-medium" style={{ color: 'var(--accent-primary)' }}>
+                        {upload.records_imported?.toLocaleString() || 0} records
+                      </span>
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>•</span>
+                      <span className="text-xs flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                        <Calendar className="w-3 h-3" />
+                        {new Date(upload.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteUpload(upload) }}
+                    disabled={deletingId === upload.id}
+                    className="p-2 rounded-lg transition-all hover:bg-white/5 disabled:opacity-50"
+                    style={{ color: 'var(--danger)' }}
+                    title="Delete this upload"
+                  >
+                    {deletingId === upload.id ? (
+                      <div className="w-4 h-4 border border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--danger)' }} />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
