@@ -2,8 +2,10 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import Sidebar from '@/components/Sidebar'
-import { Menu, User, LogOut, Sparkles, Plus, Minus, Wand2, CheckCircle2, Check, ChevronDown } from 'lucide-react'
+import { Menu, User, LogOut, Sparkles, Plus, Minus, Wand2, CheckCircle2, ChevronDown, Search, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+const ROTATION_KEY = 'myrvu-whatif-rotation'
 
 interface StudyType {
   key: string
@@ -47,12 +49,11 @@ export default function WhatIfPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(224)
 
-  const [mode, setMode] = useState<'hour' | 'day'>('hour')
   const [included, setIncluded] = useState<Set<string>>(new Set())
   const [quantities, setQuantities] = useState<Record<string, number>>({})
-  const [modalityFilter, setModalityFilter] = useState<Set<string>>(new Set())
   const [activePreset, setActivePreset] = useState<string | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [search, setSearch] = useState('')
   const didAutoSelect = useRef(false)
 
   useEffect(() => {
@@ -64,7 +65,7 @@ export default function WhatIfPage() {
 
   // Study types = modality + body part combos (what defines a rotation's menu),
   // each with the resident's own average wRVU and how many they've read.
-  const { studyTypes, modalities } = useMemo(() => {
+  const studyTypes = useMemo<StudyType[]>(() => {
     const map = new Map<string, { modality: string; bodyPart: string; count: number; totalRvu: number }>()
     for (const r of records) {
       const modality = r.modality || 'Unknown'
@@ -75,21 +76,13 @@ export default function WhatIfPage() {
       g.totalRvu += r.wrvuEstimate
       map.set(key, g)
     }
-    const studyTypes: StudyType[] = Array.from(map.entries())
+    return Array.from(map.entries())
       .map(([key, g]) => ({ key, modality: g.modality, bodyPart: g.bodyPart, avgRvu: g.totalRvu / g.count, count: g.count }))
       .filter(g => g.avgRvu > 0)
       .sort((a, b) => b.count - a.count)
-    const modalities = [...new Set(studyTypes.map(s => s.modality))].sort()
-    return { studyTypes, modalities }
   }, [records])
 
-  const hourlyTarget = goalRvuPerDay / 8
-  const target = mode === 'hour' ? hourlyTarget : goalRvuPerDay
-
-  const visible = useMemo(
-    () => (modalityFilter.size ? studyTypes.filter(s => modalityFilter.has(s.modality)) : studyTypes),
-    [studyTypes, modalityFilter]
-  )
+  const target = goalRvuPerDay
 
   const { sum, totalCases, includedCount } = useMemo(() => {
     let sum = 0, totalCases = 0, includedCount = 0
@@ -116,6 +109,21 @@ export default function WhatIfPage() {
 
   const headingLabel = activePreset ? (ROTATIONS.find(r => r.id === activePreset)?.label ?? 'mix') : 'custom'
 
+  // Fine-tune: the studies currently in the mix, and search matches to add.
+  const includedList = useMemo(
+    () => studyTypes
+      .filter(s => included.has(s.key))
+      .sort((a, b) => (quantities[b.key] || 0) - (quantities[a.key] || 0) || b.count - a.count),
+    [studyTypes, included, quantities]
+  )
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return []
+    return studyTypes
+      .filter(s => !included.has(s.key) && `${s.modality} ${s.bodyPart}`.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [search, studyTypes, included])
+
   const toggleInclude = (key: string) => {
     setActivePreset(null)
     setIncluded(prev => {
@@ -138,7 +146,7 @@ export default function WhatIfPage() {
   }
 
   // Pick a subspecialty rotation: check its study types; the effect below fills
-  // an example mix (and rescales it when you toggle per-hour / per-day).
+  // an example mix. The choice is remembered for next visit.
   const applyRotation = (presetId: string) => {
     const preset = ROTATIONS.find(r => r.id === presetId)
     if (!preset) return
@@ -147,49 +155,60 @@ export default function WhatIfPage() {
       toast.error(`No ${preset.label} studies in your data yet`)
       return
     }
-    setModalityFilter(new Set())
+    localStorage.setItem(ROTATION_KEY, presetId)
     setIncluded(new Set(matched.map(m => m.key)))
     setActivePreset(presetId)
   }
 
-  // Keep the active rotation's example mix in sync with the current target.
+  // Keep the active rotation's example mix in sync with the target.
   useEffect(() => {
     if (!activePreset) return
     const preset = ROTATIONS.find(r => r.id === activePreset)
     if (!preset) return
     const matched = studyTypes.filter(preset.match)
-    const t = mode === 'hour' ? goalRvuPerDay / 8 : goalRvuPerDay
-    setQuantities(computeMix(matched, t))
-  }, [activePreset, mode, studyTypes, goalRvuPerDay])
+    setQuantities(computeMix(matched, goalRvuPerDay))
+  }, [activePreset, studyTypes, goalRvuPerDay])
 
-  // On first load, auto-select the resident's dominant rotation so the page
-  // shows an answer immediately (demos itself).
+  // On first load, land on the right rotation with zero clicks: prefer the one
+  // the resident last picked, otherwise infer it from their most recent reads.
   useEffect(() => {
     if (didAutoSelect.current || !studyTypes.length) return
     didAutoSelect.current = true
-    let best: string | null = null, bestCount = 0
-    for (const r of ROTATIONS) {
-      const c = studyTypes.filter(r.match).reduce((s, g) => s + g.count, 0)
-      if (c > bestCount) { bestCount = c; best = r.id }
+
+    const saved = localStorage.getItem(ROTATION_KEY)
+    const savedValid = !!saved && ROTATIONS.some(r => r.id === saved && studyTypes.some(r.match))
+    let best: string | null = savedValid ? saved : null
+
+    if (!best && records.length) {
+      // Infer the current rotation from the last ~3 weeks of studies.
+      const maxT = Math.max(...records.map(r => r.dictationDatetime.getTime()))
+      const recent = records.filter(r => r.dictationDatetime.getTime() >= maxT - 21 * 24 * 3600 * 1000)
+      const pool = recent.length ? recent : records
+      let bestCount = 0
+      for (const rot of ROTATIONS) {
+        const c = pool.filter(r => rot.match({ modality: r.modality || 'Unknown', bodyPart: r.bodyPart || 'Unknown', avgRvu: 0, count: 0, key: '' })).length
+        if (c > bestCount) { bestCount = c; best = rot.id }
+      }
     }
     if (best) {
       setActivePreset(best)
       setIncluded(new Set(studyTypes.filter(ROTATIONS.find(r => r.id === best)!.match).map(m => m.key)))
     }
-  }, [studyTypes])
+  }, [studyTypes, records])
 
-  const toggleModality = (m: string) =>
-    setModalityFilter(prev => {
-      const next = new Set(prev)
-      next.has(m) ? next.delete(m) : next.add(m)
-      return next
-    })
+  // Add a study type from search into the mix.
+  const addStudy = (key: string) => {
+    setActivePreset(null)
+    setIncluded(prev => new Set(prev).add(key))
+    setQuantities(prev => ({ ...prev, [key]: Math.max(1, prev[key] || 0) }))
+    setSearch('')
+  }
 
   // Distribute the target across the SELECTED study types, weighted by how often
   // the resident actually reads each — a realistic mix for this rotation.
   const autoFill = () => {
     const set = studyTypes.filter(s => included.has(s.key))
-    const pool = set.length ? set : visible
+    const pool = set.length ? set : studyTypes
     if (!pool.length) return
     setActivePreset(null)
     setIncluded(new Set(pool.map(g => g.key)))
@@ -200,6 +219,7 @@ export default function WhatIfPage() {
     setActivePreset(null)
     setQuantities({})
     setIncluded(new Set())
+    localStorage.removeItem(ROTATION_KEY)
   }
 
   const hasData = records.length > 0
@@ -225,24 +245,6 @@ export default function WhatIfPage() {
               <Sparkles className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
               <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>What-If</span>
             </div>
-
-            {hasData && (
-              <div className="flex items-center rounded-lg overflow-hidden ml-2" style={{ border: '1px solid var(--border-color)' }}>
-                {(['hour', 'day'] as const).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className="px-2.5 py-1 text-[11px] font-medium transition-colors"
-                    style={{
-                      backgroundColor: mode === m ? 'var(--accent-primary)' : 'transparent',
-                      color: mode === m ? 'white' : 'var(--text-muted)',
-                    }}
-                  >
-                    Per {m}
-                  </button>
-                ))}
-              </div>
-            )}
 
             <div className="flex items-center gap-3 ml-auto shrink-0">
               <div className="flex items-center gap-2 px-1.5">
@@ -300,14 +302,14 @@ export default function WhatIfPage() {
               <div className="rounded-2xl border border-slate-800 p-5" style={{ backgroundColor: 'var(--bg-secondary)' }}>
                 <div className="flex items-baseline justify-between gap-3 mb-4">
                   <h2 className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                    Your <span className="font-semibold capitalize" style={{ color: 'var(--text-primary)' }}>{headingLabel}</span> {mode} ≈
+                    A <span className="font-semibold capitalize" style={{ color: 'var(--text-primary)' }}>{headingLabel}</span> day ≈
                   </h2>
                   <div className="text-right whitespace-nowrap">
                     <span className="text-xl font-bold" style={{ color: met ? 'var(--accent-primary)' : 'var(--text-primary)' }}>{sum.toFixed(1)}</span>
                     <span className="text-slate-500 text-sm"> / {target.toFixed(1)} RVU</span>
                     {met && <CheckCircle2 className="inline w-4 h-4 ml-1 mb-0.5 text-emerald-400" />}
                     {mix.length > 0 && (
-                      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{totalCases} studies per {mode}</div>
+                      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{totalCases} studies/day</div>
                     )}
                   </div>
                 </div>
@@ -347,112 +349,112 @@ export default function WhatIfPage() {
 
               {showDetails && (
                 <div className="mt-3 animate-slide-down">
-                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                  {/* Search to add a study type */}
+                  <div className="relative mb-3">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="Add a study type — e.g. “MRI knee”, “US abdomen”…"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg text-sm outline-none"
+                      style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                    />
+                    {searchResults.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded-lg overflow-hidden shadow-xl" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                        {searchResults.map(s => (
+                          <button
+                            key={s.key}
+                            onClick={() => addStudy(s.key)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/5"
+                          >
+                            <Plus className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent-primary)' }} />
+                            <span className="text-sm flex-1 min-w-0 truncate" style={{ color: 'var(--text-primary)' }}>
+                              <span style={{ color: 'var(--accent-primary)' }}>{s.modality}</span> · {s.bodyPart}
+                            </span>
+                            <span className="text-[11px] font-mono" style={{ color: 'var(--text-muted)' }}>{s.avgRvu.toFixed(2)} RVU</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* In your mix — only the selected studies, editable */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                      In your mix ({includedCount})
+                    </span>
                     <button
                       onClick={autoFill}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-white transition-colors"
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-white transition-colors"
                       style={{ backgroundColor: 'var(--accent-primary)' }}
-                      title={includedCount ? 'Distribute the target across your checked study types' : 'Auto-fill across the study types shown'}
+                      title="Recalculate the counts to hit your target"
                     >
                       <Wand2 className="w-3.5 h-3.5" /> Auto-fill
                     </button>
-                    {modalities.length > 1 && (
-                      <>
-                        <span className="text-[11px] ml-1" style={{ color: 'var(--text-muted)' }}>Filter:</span>
-                        {modalities.map(m => {
-                          const on = modalityFilter.has(m)
-                          return (
-                            <button
-                              key={m}
-                              onClick={() => toggleModality(m)}
-                              className="px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors"
-                              style={{
-                                backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
-                                color: on ? 'white' : 'var(--text-muted)',
-                                border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
-                              }}
-                            >
-                              {m}
-                            </button>
-                          )
-                        })}
-                      </>
-                    )}
                   </div>
 
-                  <div className="space-y-1.5">
-                    {visible.map(s => {
-                      const on = included.has(s.key)
-                      const q = quantities[s.key] || 0
-                      const subtotal = q * s.avgRvu
-                      return (
-                        <div
-                          key={s.key}
-                          className="flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors"
-                          style={{
-                            backgroundColor: on ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
-                            borderColor: on ? 'rgba(16,185,129,0.3)' : 'var(--border-color)',
-                          }}
-                        >
-                          <button
-                            onClick={() => toggleInclude(s.key)}
-                            className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-colors"
-                            style={{
-                              backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
-                              border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
-                            }}
-                            title={on ? 'Remove from your rotation' : 'Add to your rotation'}
+                  {includedList.length === 0 ? (
+                    <p className="text-sm text-slate-500 py-6 text-center">
+                      Pick a rotation, or search above to add study types.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {includedList.map(s => {
+                        const q = quantities[s.key] || 0
+                        return (
+                          <div
+                            key={s.key}
+                            className="flex items-center gap-3 px-3 py-2 rounded-xl border"
+                            style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
                           >
-                            {on && <Check className="w-3.5 h-3.5 text-white" />}
-                          </button>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                              <span style={{ color: 'var(--accent-primary)' }}>{s.modality}</span>
-                              <span className="text-slate-500"> · </span>
-                              {s.bodyPart}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                                <span style={{ color: 'var(--accent-primary)' }}>{s.modality}</span>
+                                <span className="text-slate-500"> · </span>
+                                {s.bodyPart}
+                              </div>
+                              <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{s.avgRvu.toFixed(2)} RVU avg</div>
                             </div>
-                            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                              {s.avgRvu.toFixed(2)} RVU avg · you've read {s.count.toLocaleString()}
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => setQty(s.key, q - 1)}
+                                disabled={q === 0}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 disabled:opacity-30"
+                                style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              <input
+                                type="number"
+                                min={0}
+                                value={q === 0 ? '' : q}
+                                placeholder="0"
+                                onChange={e => setQty(s.key, Math.floor(Number(e.target.value) || 0))}
+                                className="w-11 text-center py-1 rounded-lg text-sm outline-none bg-slate-950 border border-slate-700 text-slate-200 placeholder:text-slate-600"
+                              />
+                              <button
+                                onClick={() => setQty(s.key, q + 1)}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+                                style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => toggleInclude(s.key)}
+                                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-red-500/10 ml-1"
+                                style={{ color: 'var(--text-muted)' }}
+                                title="Remove from your mix"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
-
-                          <div className="text-right w-14 shrink-0">
-                            {q > 0 && <span className="text-xs font-mono text-emerald-400">{subtotal.toFixed(1)}</span>}
-                          </div>
-
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              onClick={() => setQty(s.key, q - 1)}
-                              disabled={q === 0}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 disabled:opacity-30"
-                              style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <input
-                              type="number"
-                              min={0}
-                              value={q === 0 ? '' : q}
-                              placeholder="0"
-                              onChange={e => setQty(s.key, Math.floor(Number(e.target.value) || 0))}
-                              className="w-11 text-center py-1 rounded-lg text-sm outline-none bg-slate-950 border border-slate-700 text-slate-200 placeholder:text-slate-600"
-                            />
-                            <button
-                              onClick={() => setQty(s.key, q + 1)}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-                              style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {visible.length === 0 && (
-                      <p className="text-center text-sm text-slate-500 py-8">No study types match that filter.</p>
-                    )}
-                  </div>
+                        )
+                      })}
+                    </div>
+                  )}
 
                   <p className="text-[11px] text-slate-600 mt-4 leading-relaxed">
                     Averages come from your own reads, so the mix reflects your real complexity. This is a planning estimate —
