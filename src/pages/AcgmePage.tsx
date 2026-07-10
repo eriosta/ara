@@ -1,11 +1,13 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import Sidebar from '@/components/Sidebar'
 import { countAcgmeCategories } from '@/lib/acgmeCategories'
+import { parseAcgmeReport, applyReportToCategories } from '@/lib/acgmeImport'
 import { RVURecord } from '@/lib/dataProcessing'
-import { Menu, User, LogOut, ChevronRight, ChevronDown, Target, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
+import { Menu, User, LogOut, ChevronRight, ChevronDown, Target, AlertTriangle, CheckCircle2, RotateCcw, Upload } from 'lucide-react'
 import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 
 const MIN_KEY = 'myrvu-acgme-minimums'
 const REPORTED_KEY = 'myrvu-acgme-reported'
@@ -80,6 +82,31 @@ export default function AcgmePage() {
     setReported({})
   }
 
+  // Upload the program's ACGME "Defined Category" report to auto-fill the
+  // Reported (and Minimum) columns instead of typing them in.
+  const fileRef = useRef<HTMLInputElement>(null)
+  const handleReportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (e.target) e.target.value = '' // allow re-uploading the same file
+    if (!file) return
+    try {
+      const rows = parseAcgmeReport(await file.arrayBuffer())
+      const { minimums, reported: rep, matched, unmatched } = applyReportToCategories(rows)
+      if (matched.length === 0) {
+        toast.error('Could not find any matching categories — is this an ACGME "Defined Category" export?')
+        return
+      }
+      setMinOverrides(prev => ({ ...prev, ...minimums }))
+      setReported(prev => ({ ...prev, ...rep }))
+      toast.success(
+        `Loaded ${matched.length} categories from your report${unmatched.length ? ` (${unmatched.length} not found)` : ''}`
+      )
+    } catch (err) {
+      console.error('ACGME report import error:', err)
+      toast.error(`Could not read that file: ${err instanceof Error ? err.message : 'unknown error'}`)
+    }
+  }
+
   const hasData = records.length > 0
 
   return (
@@ -122,6 +149,21 @@ export default function AcgmePage() {
             )}
 
             <div className="flex items-center gap-3 ml-auto shrink-0">
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xls,.xlsx,.csv"
+                onChange={handleReportFile}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors"
+                style={{ backgroundColor: 'var(--accent-primary)', color: 'white' }}
+                title="Upload your program's ACGME Defined-Category report to auto-fill Reported and Minimum"
+              >
+                <Upload className="w-3 h-3" /> Upload report
+              </button>
               <button
                 onClick={resetOverrides}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors hover:bg-white/5"
@@ -167,9 +209,9 @@ export default function AcgmePage() {
               <div className="mb-4 rounded-xl bg-blue-500/5 border border-blue-500/20 px-4 py-3">
                 <p className="text-xs text-slate-400 leading-relaxed">
                   <span className="text-blue-300 font-medium">App count</span> is myRVU's independent tally from your uploaded studies.
-                  Enter your program's <span className="text-slate-300 font-medium">Reported</span> number to spot discrepancies (Δ),
-                  and edit <span className="text-slate-300 font-medium">Min</span> if your program's requirement differs.
-                  Click a row to see exactly which studies were counted.
+                  <span className="text-slate-300 font-medium"> Upload report</span> to auto-fill your program's <span className="text-slate-300 font-medium">Reported</span> numbers
+                  (from an ACGME Defined-Category export) — any mismatch shows in the <span className="text-slate-300 font-medium">Δ</span> column.
+                  You can also edit any value by hand. Click a row to see exactly which studies were counted.
                   Counts reflect <span className="text-slate-300 font-medium">all uploaded data</span> ({records.length.toLocaleString()} studies).
                 </p>
               </div>
