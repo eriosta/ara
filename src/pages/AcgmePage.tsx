@@ -4,8 +4,9 @@ import { useDataStore } from '@/stores/dataStore'
 import Sidebar from '@/components/Sidebar'
 import { countAcgmeCategories } from '@/lib/acgmeCategories'
 import { parseAcgmeReport, applyReportToCategories } from '@/lib/acgmeImport'
+import { downloadAcgmeWorkbook } from '@/lib/exportUtils'
 import { RVURecord } from '@/lib/dataProcessing'
-import { Menu, User, LogOut, ChevronRight, ChevronDown, Target, AlertTriangle, CheckCircle2, RotateCcw, Upload } from 'lucide-react'
+import { Menu, User, LogOut, ChevronRight, ChevronDown, Target, AlertTriangle, CheckCircle2, RotateCcw, Upload, Download } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 
@@ -80,6 +81,25 @@ export default function AcgmePage() {
   const resetOverrides = () => {
     setMinOverrides({})
     setReported({})
+  }
+
+  // Export a coordinator-ready workbook: Summary tab + one tab of studies per category.
+  const handleExportWorkbook = () => {
+    if (records.length === 0) {
+      toast.error('No data to export. Upload some studies first.')
+      return
+    }
+    const exportRows = rows.map(r => ({
+      category: r.category.name,
+      minimum: r.minimum,
+      appCount: r.count,
+      reported: r.reportedNum,
+      matched: r.matched,
+    }))
+    const name = profile?.full_name || 'Resident'
+    const dateStr = new Date().toISOString().split('T')[0]
+    downloadAcgmeWorkbook(exportRows, name, `ACGME_Minimums_${name.replace(/[^a-z0-9]/gi, '_')}_${dateStr}.xlsx`)
+    toast.success('Exported summary + per-category study lists')
   }
 
   // Upload the program's ACGME "Defined Category" report to auto-fill the
@@ -158,11 +178,19 @@ export default function AcgmePage() {
               />
               <button
                 onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors"
-                style={{ backgroundColor: 'var(--accent-primary)', color: 'white' }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors hover:bg-white/5"
+                style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
                 title="Upload your program's ACGME Defined-Category report to auto-fill Reported and Minimum"
               >
                 <Upload className="w-3 h-3" /> Upload report
+              </button>
+              <button
+                onClick={handleExportWorkbook}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors"
+                style={{ backgroundColor: 'var(--accent-primary)', color: 'white' }}
+                title="Export an Excel workbook (summary + every study per category) to send to your coordinator"
+              >
+                <Download className="w-3 h-3" /> Export for coordinator
               </button>
               <button
                 onClick={resetOverrides}

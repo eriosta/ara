@@ -80,3 +80,61 @@ export function downloadExcel(rows: ExportRow[], filename: string): void {
   XLSX.utils.book_append_sheet(wb, ws, 'Studies')
   XLSX.writeFile(wb, filename)
 }
+
+// --- ACGME coordinator export (summary + one sheet of studies per category) ---
+
+export interface AcgmeExportCategory {
+  category: string
+  minimum: number
+  appCount: number
+  reported: number | null
+  matched: RVURecord[]
+}
+
+// Excel sheet names: max 31 chars, no \ / ? * [ ] :, and must be unique.
+function sanitizeSheetName(name: string, used: Set<string>): string {
+  const base = (name.replace(/[\\/?*[\]:]/g, '-').trim() || 'Sheet').slice(0, 28)
+  let candidate = base
+  let n = 2
+  while (used.has(candidate.toLowerCase())) {
+    candidate = `${base.slice(0, 26)} ${n++}`
+  }
+  used.add(candidate.toLowerCase())
+  return candidate
+}
+
+/**
+ * Builds a workbook to send to a program coordinator: a Summary tab (each
+ * category's app count vs program-reported vs minimum + Δ), then one tab per
+ * category listing every individual study counted toward it.
+ */
+export function downloadAcgmeWorkbook(rows: AcgmeExportCategory[], residentName: string, filename: string): void {
+  const wb = XLSX.utils.book_new()
+
+  const summary = rows.map(r => ({
+    Category: r.category,
+    'ACGME Minimum': r.minimum,
+    'App Count': r.appCount,
+    'Program Reported': r.reported ?? '',
+    'Δ (App − Reported)': r.reported != null ? r.appCount - r.reported : '',
+    Status: r.appCount >= r.minimum ? 'Met' : `${(r.minimum - r.appCount).toLocaleString()} short`,
+  }))
+  const summaryWs = XLSX.utils.aoa_to_sheet([
+    ['myRVU — ACGME Minimums'],
+    [`Resident: ${residentName}`],
+    [],
+  ])
+  XLSX.utils.sheet_add_json(summaryWs, summary, { origin: 'A4' })
+  XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary')
+
+  const used = new Set<string>(['summary'])
+  for (const r of rows) {
+    const studyRows = recordsToExportRows(r.matched)
+    const ws = XLSX.utils.json_to_sheet(
+      studyRows.length ? studyRows : [{ Note: 'No studies matched this category' }]
+    )
+    XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(r.category, used))
+  }
+
+  XLSX.writeFile(wb, filename)
+}

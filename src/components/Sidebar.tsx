@@ -308,24 +308,6 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
               </div>
             )}
 
-            {/* Saved Data summary — opens a roomy modal instead of a cramped scroll */}
-            {records.length > 0 && uploadHistory.length > 0 && (
-              <button
-                onClick={() => setShowDataModal(true)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors interactive-item"
-                title="View and manage your uploaded files"
-              >
-                <Database className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
-                <div className="flex-1 min-w-0 text-left">
-                  <span className="text-sm font-medium block" style={{ color: 'var(--text-secondary)' }}>Your Saved Data</span>
-                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    {uploadHistory.reduce((sum, u) => sum + (u.records_imported || 0), 0).toLocaleString()} records · {uploadHistory.length} upload{uploadHistory.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-                <ChevronDown className="w-4 h-4 -rotate-90" style={{ color: 'var(--text-muted)' }} />
-              </button>
-            )}
-
             {/* Export raw data (Excel) */}
             <button
               onClick={handleExport}
@@ -335,46 +317,27 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
               data-tour="sidebar-export"
             >
               <FileSpreadsheet className="w-5 h-5" style={{ color: 'var(--info)' }} />
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export Excel Data</span>
+              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export to Excel</span>
             </button>
 
-            {/* Re-run classification */}
+            {/* Manage data — uploads, re-classify, and clear all live in the modal */}
             {records.length > 0 && (
               <button
-                onClick={handleReprocess}
-                disabled={reprocessing || loading}
-                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
-                title="Re-classify all stored studies using the latest modality/body-part rules"
+                onClick={() => setShowDataModal(true)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors interactive-item"
+                title="Manage your uploads, re-run classification, or clear data"
               >
-                <RefreshCw className={`w-5 h-5 ${reprocessing ? 'animate-spin' : ''}`} style={{ color: 'var(--accent-primary)' }} />
-                <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  {reprocessing ? 'Re-classifying…' : 'Re-run Classification'}
-                </span>
-              </button>
-            )}
-
-            {/* Clear Data */}
-            {records.length > 0 && (
-              <button
-                onClick={handleClearData}
-                disabled={loading}
-                className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50"
-                style={{ color: 'var(--danger)' }}
-              >
-                <Trash2 className="w-5 h-5" />
-                <span className="text-sm font-medium">Clear All Data</span>
+                <Database className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
+                <div className="flex-1 min-w-0 text-left">
+                  <span className="text-sm font-medium block" style={{ color: 'var(--text-secondary)' }}>Manage data</span>
+                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    {records.length.toLocaleString()} records{uploadHistory.length ? ` · ${uploadHistory.length} upload${uploadHistory.length !== 1 ? 's' : ''}` : ''}
+                  </span>
+                </div>
+                <ChevronDown className="w-4 h-4 -rotate-90" style={{ color: 'var(--text-muted)' }} />
               </button>
             )}
           </div>
-
-          {/* Footer */}
-          {records.length > 0 && (
-            <div className="p-4" style={{ borderTop: '1px solid var(--border-color)' }}>
-              <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-                {records.length.toLocaleString()} records loaded
-              </p>
-            </div>
-          )}
         </div>
       </aside>
 
@@ -412,6 +375,11 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
 
             {/* Upload list */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {uploadHistory.length === 0 && (
+                <p className="text-xs text-center py-6" style={{ color: 'var(--text-muted)' }}>
+                  No upload history to show.
+                </p>
+              )}
               {uploadHistory.map((upload) => (
                 <div
                   key={upload.id}
@@ -449,6 +417,30 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
                   </button>
                 </div>
               ))}
+            </div>
+
+            {/* Modal footer: maintenance + destructive actions live here, out of the sidebar */}
+            <div className="p-4 flex items-center gap-2" style={{ borderTop: '1px solid var(--border-color)' }}>
+              <button
+                onClick={handleReprocess}
+                disabled={reprocessing || loading}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                title="Re-classify all stored studies using the latest modality/body-part rules"
+              >
+                <RefreshCw className={`w-4 h-4 ${reprocessing ? 'animate-spin' : ''}`} style={{ color: 'var(--accent-primary)' }} />
+                {reprocessing ? 'Re-classifying…' : 'Re-run Classification'}
+              </button>
+              <button
+                onClick={handleClearData}
+                disabled={loading}
+                className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 hover:bg-red-500/10"
+                style={{ border: '1px solid var(--border-color)', color: 'var(--danger)' }}
+                title="Delete all your data"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear all
+              </button>
             </div>
           </div>
         </div>
