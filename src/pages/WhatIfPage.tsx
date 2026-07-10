@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import Sidebar from '@/components/Sidebar'
 import { Menu, User, LogOut, Sparkles, Plus, Minus, Wand2, RotateCcw, CheckCircle2, Check } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 interface StudyType {
   key: string
@@ -10,6 +11,33 @@ interface StudyType {
   bodyPart: string
   avgRvu: number
   count: number
+}
+
+// Subspecialty rotation presets: each selects the study types that rotation reads.
+// Matching is by the app's modality + body-part labels (see taxonomy).
+const ROTATIONS: { id: string; label: string; match: (s: StudyType) => boolean }[] = [
+  { id: 'neuro', label: 'Neuro', match: s => /Head\/Neck|Spine/.test(s.bodyPart) },
+  { id: 'body', label: 'Body / Abd', match: s => /Abdomen|Pelvis|Liver|Renal|Stomach/.test(s.bodyPart) && s.modality !== 'US - Obstetrical' },
+  { id: 'chest', label: 'Chest', match: s => /Chest/.test(s.bodyPart) },
+  { id: 'msk', label: 'MSK', match: s => /Upper Extremity|Lower Extremity|Musculoskeletal|Axilla/.test(s.bodyPart) },
+  { id: 'women', label: "Women's / Breast", match: s => s.modality.startsWith('Mammography') || /Breast/.test(s.bodyPart) || s.modality === 'US - Obstetrical' },
+  { id: 'nucs', label: 'Nuclear / PET', match: s => s.modality === 'Nuclear Medicine' || s.modality === 'PET/CT' },
+  { id: 'us', label: 'Ultrasound', match: s => s.modality.startsWith('US') },
+  { id: 'vascular', label: 'Vascular', match: s => s.bodyPart === 'Vascular' || ['CTA', 'MRA', 'MRV'].includes(s.modality) },
+  { id: 'fluoro', label: 'Fluoro', match: s => s.modality.startsWith('Fluoroscopy') },
+]
+
+// Distribute a target across a pool of study types, weighted by how often the
+// resident reads each — a realistic example mix that ~sums to the target.
+function computeMix(pool: StudyType[], target: number): Record<string, number> {
+  const totalCount = pool.reduce((s, g) => s + g.count, 0)
+  if (!totalCount) return {}
+  const weightedAvg = pool.reduce((s, g) => s + g.avgRvu * g.count, 0) / totalCount
+  if (weightedAvg <= 0) return {}
+  const casesNeeded = target / weightedAvg
+  const q: Record<string, number> = {}
+  for (const g of pool) q[g.key] = Math.round(casesNeeded * (g.count / totalCount))
+  return q
 }
 
 export default function WhatIfPage() {
@@ -23,6 +51,7 @@ export default function WhatIfPage() {
   const [included, setIncluded] = useState<Set<string>>(new Set())
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [modalityFilter, setModalityFilter] = useState<Set<string>>(new Set())
+  const [activePreset, setActivePreset] = useState<string | null>(null)
 
   useEffect(() => {
     if (user && !initialFetchDone) {
@@ -76,7 +105,17 @@ export default function WhatIfPage() {
   const met = sum >= target && sum > 0
   const remaining = Math.max(0, target - sum)
 
-  const toggleInclude = (key: string) =>
+  // The selected example mix (for the summary chips), highest-RVU first.
+  const mix = useMemo(
+    () => studyTypes
+      .filter(s => included.has(s.key) && (quantities[s.key] || 0) > 0)
+      .map(s => ({ ...s, qty: quantities[s.key], subtotal: quantities[s.key] * s.avgRvu }))
+      .sort((a, b) => b.subtotal - a.subtotal),
+    [studyTypes, included, quantities]
+  )
+
+  const toggleInclude = (key: string) => {
+    setActivePreset(null)
     setIncluded(prev => {
       const next = new Set(prev)
       if (next.has(key)) {
@@ -87,12 +126,39 @@ export default function WhatIfPage() {
       }
       return next
     })
+  }
 
   const setQty = (key: string, n: number) => {
+    setActivePreset(null)
     const q = Math.max(0, n)
     setQuantities(prev => ({ ...prev, [key]: q }))
     if (q > 0) setIncluded(prev => new Set(prev).add(key))
   }
+
+  // Pick a subspecialty rotation: check its study types; the effect below fills
+  // an example mix (and rescales it when you toggle per-hour / per-day).
+  const applyRotation = (presetId: string) => {
+    const preset = ROTATIONS.find(r => r.id === presetId)
+    if (!preset) return
+    const matched = studyTypes.filter(preset.match)
+    if (!matched.length) {
+      toast.error(`No ${preset.label} studies in your data yet`)
+      return
+    }
+    setModalityFilter(new Set())
+    setIncluded(new Set(matched.map(m => m.key)))
+    setActivePreset(presetId)
+  }
+
+  // Keep the active rotation's example mix in sync with the current target.
+  useEffect(() => {
+    if (!activePreset) return
+    const preset = ROTATIONS.find(r => r.id === activePreset)
+    if (!preset) return
+    const matched = studyTypes.filter(preset.match)
+    const t = mode === 'hour' ? goalRvuPerDay / 8 : goalRvuPerDay
+    setQuantities(computeMix(matched, t))
+  }, [activePreset, mode, studyTypes, goalRvuPerDay])
 
   const toggleModality = (m: string) =>
     setModalityFilter(prev => {
@@ -107,22 +173,13 @@ export default function WhatIfPage() {
     const set = studyTypes.filter(s => included.has(s.key))
     const pool = set.length ? set : visible
     if (!pool.length) return
-    const totalCount = pool.reduce((s, g) => s + g.count, 0)
-    const weightedAvg = pool.reduce((s, g) => s + g.avgRvu * g.count, 0) / totalCount
-    if (weightedAvg <= 0) return
-    const casesNeeded = target / weightedAvg
-    const nextQ: Record<string, number> = { ...quantities }
-    const nextInc = new Set(included)
-    for (const g of pool) {
-      const n = Math.round(casesNeeded * (g.count / totalCount))
-      nextQ[g.key] = n
-      nextInc.add(g.key)
-    }
-    setQuantities(nextQ)
-    setIncluded(nextInc)
+    setActivePreset(null)
+    setIncluded(new Set(pool.map(g => g.key)))
+    setQuantities({ ...quantities, ...computeMix(pool, target) })
   }
 
   const clear = () => {
+    setActivePreset(null)
     setQuantities({})
     setIncluded(new Set())
   }
@@ -198,10 +255,31 @@ export default function WhatIfPage() {
             <>
               <div className="mb-4 rounded-xl bg-blue-500/5 border border-blue-500/20 px-4 py-3">
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  <span className="text-slate-300 font-medium">Check the study types you're reading this rotation</span> (e.g. on neuro: CT &amp; MRI
-                  head, brain, spine), then hit <span className="text-slate-300 font-medium">Auto-fill</span> to see how many of each you'd need
-                  to hit your target — or dial the counts yourself. Averages come from your own reads.
+                  <span className="text-slate-300 font-medium">Pick your rotation</span> to auto-select its studies and get an example case mix that
+                  hits your target — or check study types yourself. Counts and averages come from your own reads.
                 </p>
+              </div>
+
+              {/* Rotation presets — one click selects a subspecialty's study types */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-4">
+                <span className="text-[11px] mr-1 font-medium" style={{ color: 'var(--text-muted)' }}>Rotation:</span>
+                {ROTATIONS.map(r => {
+                  const on = activePreset === r.id
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => applyRotation(r.id)}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors"
+                      style={{
+                        backgroundColor: on ? 'var(--accent-primary)' : 'var(--bg-card)',
+                        color: on ? 'white' : 'var(--text-secondary)',
+                        border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                      }}
+                    >
+                      {r.label}
+                    </button>
+                  )
+                })}
               </div>
 
               {/* Target progress card */}
@@ -242,6 +320,22 @@ export default function WhatIfPage() {
                 <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden">
                   <div className={`h-full rounded-full transition-all ${met ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
                 </div>
+
+                {/* Example mix summary */}
+                {mix.length > 0 && (
+                  <div className="mt-3 pt-3 flex flex-wrap gap-1.5" style={{ borderTop: '1px solid var(--border-color)' }}>
+                    <span className="text-[11px] mr-1" style={{ color: 'var(--text-muted)' }}>Example mix:</span>
+                    {mix.map(m => (
+                      <span
+                        key={m.key}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px]"
+                        style={{ backgroundColor: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: 'var(--accent-primary)' }}
+                      >
+                        <span className="font-mono font-semibold">{m.qty}×</span> {m.modality} · {m.bodyPart}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Modality filter to quickly narrow to your rotation */}
