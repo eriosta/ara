@@ -15,17 +15,23 @@ interface StudyType {
   count: number
 }
 
+// Nuclear medicine and PET are only read on the nuclear-medicine rotation, so
+// they're excluded from every anatomy-based rotation (a V/Q lung scan must not
+// land in "Chest", a thyroid scan must not land in "Neuro", etc.).
+const NM_MODALITIES = ['Nuclear Medicine', 'PET/CT']
+const notNM = (s: StudyType) => !NM_MODALITIES.includes(s.modality)
+
 // Subspecialty rotation presets: each selects the study types that rotation reads.
 // Matching is by the app's modality + body-part labels (see taxonomy).
 const ROTATIONS: { id: string; label: string; match: (s: StudyType) => boolean }[] = [
-  { id: 'neuro', label: 'Neuro', match: s => /Head\/Neck|Spine/.test(s.bodyPart) },
-  { id: 'body', label: 'Body / Abd', match: s => /Abdomen|Pelvis|Liver|Renal|Stomach/.test(s.bodyPart) && s.modality !== 'US - Obstetrical' },
-  { id: 'chest', label: 'Chest', match: s => /Chest/.test(s.bodyPart) },
-  { id: 'msk', label: 'MSK', match: s => /Upper Extremity|Lower Extremity|Musculoskeletal|Axilla/.test(s.bodyPart) },
-  { id: 'women', label: "Women's / Breast", match: s => s.modality.startsWith('Mammography') || /Breast/.test(s.bodyPart) || s.modality === 'US - Obstetrical' },
-  { id: 'nucs', label: 'Nuclear / PET', match: s => s.modality === 'Nuclear Medicine' || s.modality === 'PET/CT' },
+  { id: 'neuro', label: 'Neuro', match: s => notNM(s) && /Head\/Neck|Spine/.test(s.bodyPart) },
+  { id: 'body', label: 'Body / Abd', match: s => notNM(s) && s.modality !== 'US - Obstetrical' && /Abdomen|Pelvis|Liver|Renal|Stomach/.test(s.bodyPart) },
+  { id: 'chest', label: 'Chest', match: s => notNM(s) && /Chest/.test(s.bodyPart) },
+  { id: 'msk', label: 'MSK', match: s => notNM(s) && /Upper Extremity|Lower Extremity|Musculoskeletal|Axilla/.test(s.bodyPart) },
+  { id: 'women', label: "Women's / Breast", match: s => notNM(s) && (s.modality.startsWith('Mammography') || /Breast/.test(s.bodyPart) || s.modality === 'US - Obstetrical') },
+  { id: 'nucs', label: 'Nuclear / PET', match: s => NM_MODALITIES.includes(s.modality) },
   { id: 'us', label: 'Ultrasound', match: s => s.modality.startsWith('US') },
-  { id: 'vascular', label: 'Vascular', match: s => s.bodyPart === 'Vascular' || ['CTA', 'MRA', 'MRV'].includes(s.modality) },
+  { id: 'vascular', label: 'Vascular', match: s => notNM(s) && (s.bodyPart === 'Vascular' || ['CTA', 'MRA', 'MRV'].includes(s.modality)) },
   { id: 'fluoro', label: 'Fluoro', match: s => s.modality.startsWith('Fluoroscopy') },
 ]
 
