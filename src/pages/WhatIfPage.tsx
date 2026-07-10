@@ -29,16 +29,24 @@ const ROTATIONS: { id: string; label: string; match: (s: StudyType) => boolean }
   { id: 'fluoro', label: 'Fluoro', match: s => s.modality.startsWith('Fluoroscopy') },
 ]
 
-// Distribute a target across a pool of study types, weighted by how often the
-// resident reads each — a realistic example mix that ~sums to the target.
-function computeMix(pool: StudyType[], target: number): Record<string, number> {
-  const totalCount = pool.reduce((s, g) => s + g.count, 0)
-  if (!totalCount) return {}
-  const weightedAvg = pool.reduce((s, g) => s + g.avgRvu * g.count, 0) / totalCount
+// How strongly a "Heavy on" emphasis skews the mix toward a modality/region.
+const EMPHASIS_BOOST = 4
+
+// Distribute a target across a pool of study types, weighted by `weightOf`
+// (defaults to how often the resident reads each) — a realistic example mix
+// that ~sums to the target.
+function computeMix(
+  pool: StudyType[],
+  target: number,
+  weightOf: (s: StudyType) => number = s => s.count,
+): Record<string, number> {
+  const totalW = pool.reduce((s, g) => s + weightOf(g), 0)
+  if (!totalW) return {}
+  const weightedAvg = pool.reduce((s, g) => s + g.avgRvu * weightOf(g), 0) / totalW
   if (weightedAvg <= 0) return {}
   const casesNeeded = target / weightedAvg
   const q: Record<string, number> = {}
-  for (const g of pool) q[g.key] = Math.round(casesNeeded * (g.count / totalCount))
+  for (const g of pool) q[g.key] = Math.round(casesNeeded * (weightOf(g) / totalW))
   return q
 }
 
@@ -52,6 +60,7 @@ export default function WhatIfPage() {
   const [included, setIncluded] = useState<Set<string>>(new Set())
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [activePreset, setActivePreset] = useState<string | null>(null)
+  const [emphasis, setEmphasis] = useState<Set<string>>(new Set()) // modality/region tokens to weight toward
   const [showDetails, setShowDetails] = useState(false)
   const [search, setSearch] = useState('')
   const didAutoSelect = useRef(false)
@@ -156,18 +165,43 @@ export default function WhatIfPage() {
       return
     }
     localStorage.setItem(ROTATION_KEY, presetId)
+    setEmphasis(new Set())
     setIncluded(new Set(matched.map(m => m.key)))
     setActivePreset(presetId)
   }
 
-  // Keep the active rotation's example mix in sync with the target.
+  // Keep the active rotation's example mix in sync with the target + emphasis.
   useEffect(() => {
     if (!activePreset) return
     const preset = ROTATIONS.find(r => r.id === activePreset)
     if (!preset) return
     const matched = studyTypes.filter(preset.match)
-    setQuantities(computeMix(matched, goalRvuPerDay))
-  }, [activePreset, studyTypes, goalRvuPerDay])
+    const weightOf = (s: StudyType) =>
+      s.count * (emphasis.has(s.modality) ? EMPHASIS_BOOST : 1) * (emphasis.has(s.bodyPart) ? EMPHASIS_BOOST : 1)
+    setQuantities(computeMix(matched, goalRvuPerDay, weightOf))
+  }, [activePreset, studyTypes, goalRvuPerDay, emphasis])
+
+  // "Heavy on" options for the active rotation: the modalities and regions that
+  // actually appear in it (so the choices are always in real rad terminology).
+  const facets = useMemo(() => {
+    const preset = activePreset ? ROTATIONS.find(r => r.id === activePreset) : null
+    if (!preset) return { modalities: [] as string[], regions: [] as string[] }
+    const matched = studyTypes.filter(preset.match)
+    const modAgg = new Map<string, number>(), regAgg = new Map<string, number>()
+    for (const s of matched) {
+      modAgg.set(s.modality, (modAgg.get(s.modality) || 0) + s.count)
+      regAgg.set(s.bodyPart, (regAgg.get(s.bodyPart) || 0) + s.count)
+    }
+    const byVol = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0])
+    return { modalities: byVol(modAgg), regions: byVol(regAgg).slice(0, 6) }
+  }, [activePreset, studyTypes])
+
+  const toggleEmphasis = (token: string) =>
+    setEmphasis(prev => {
+      const next = new Set(prev)
+      next.has(token) ? next.delete(token) : next.add(token)
+      return next
+    })
 
   // On first load, land on the right rotation with zero clicks: prefer the one
   // the resident last picked, otherwise infer it from their most recent reads.
@@ -217,6 +251,7 @@ export default function WhatIfPage() {
 
   const clear = () => {
     setActivePreset(null)
+    setEmphasis(new Set())
     setQuantities({})
     setIncluded(new Set())
     localStorage.removeItem(ROTATION_KEY)
@@ -297,6 +332,53 @@ export default function WhatIfPage() {
                   <button onClick={clear} className="ml-1 text-[11px] px-1.5 hover:opacity-70" style={{ color: 'var(--text-muted)' }}>clear</button>
                 )}
               </div>
+
+              {/* Heavy on — emphasize a modality and/or region within the rotation */}
+              {activePreset && (facets.modalities.length > 1 || facets.regions.length > 1) && (
+                <div className="flex flex-wrap items-center gap-1.5 mb-4 -mt-1">
+                  <span className="text-[11px] mr-1" style={{ color: 'var(--text-muted)' }}>Heavy on:</span>
+                  {facets.modalities.length > 1 && facets.modalities.map(m => {
+                    const on = emphasis.has(m)
+                    return (
+                      <button
+                        key={`m-${m}`}
+                        onClick={() => toggleEmphasis(m)}
+                        className="px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors"
+                        style={{
+                          backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
+                          color: on ? 'white' : 'var(--text-secondary)',
+                          border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                        }}
+                      >
+                        {m}
+                      </button>
+                    )
+                  })}
+                  {facets.modalities.length > 1 && facets.regions.length > 1 && (
+                    <span className="w-px h-4 mx-0.5" style={{ backgroundColor: 'var(--border-color)' }} />
+                  )}
+                  {facets.regions.length > 1 && facets.regions.map(r => {
+                    const on = emphasis.has(r)
+                    return (
+                      <button
+                        key={`r-${r}`}
+                        onClick={() => toggleEmphasis(r)}
+                        className="px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors"
+                        style={{
+                          backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
+                          color: on ? 'white' : 'var(--text-secondary)',
+                          border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                        }}
+                      >
+                        {r}
+                      </button>
+                    )
+                  })}
+                  {emphasis.size > 0 && (
+                    <button onClick={() => setEmphasis(new Set())} className="text-[11px] px-1.5 hover:opacity-70" style={{ color: 'var(--text-muted)' }}>balanced</button>
+                  )}
+                </div>
+              )}
 
               {/* Hero: the answer, front and center */}
               <div className="rounded-2xl border border-slate-800 p-5" style={{ backgroundColor: 'var(--bg-secondary)' }}>
