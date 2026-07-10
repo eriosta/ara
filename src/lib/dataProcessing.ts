@@ -71,7 +71,9 @@ export function modalityFromDesc(s: string): string {
 function contrastPhrase(t: string): string {
   if (/WITH\s*(AND|&)?\s*WITHOUT|W\/.*AND.*W\/O|W\s*&\s*W\/O/i.test(t)) return 'w/ and w/o Contrast'
   if (/\bWITHOUT\b|\bW\/O\b|\bWO\b/i.test(t)) return 'w/o Contrast'
-  if (/\bWITH\b|\bW\/\b/i.test(t)) return 'w/ Contrast'
+  // "w/o" is handled above, so any remaining "W/" here means "with contrast".
+  // (Trailing \b failed on "W/ CONTRAST" because "/" → space is not a word boundary.)
+  if (/\bWITH\b|W\//i.test(t)) return 'w/ Contrast'
   return ''
 }
 

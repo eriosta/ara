@@ -15,6 +15,7 @@
 // the UI and persisted per-browser, so other programs can adjust them.
 
 import { RVURecord } from './dataProcessing'
+import { StudyAttributes, classifyStudy } from './classify'
 
 // The 11 categories and minimums below are confirmed verbatim against the ACGME
 // Review Committee for Radiology "Case Log Categories and Required Minimum Numbers"
@@ -40,28 +41,25 @@ export interface AcgmeCategory {
   defaultMinimum: number
   /** Short explanation of what the app counts for this category. */
   description: string
-  /** Returns true if a study (by its upper-cased description) belongs to this category. */
-  match: (descUpper: string) => boolean
+  /** Returns true if a study (by its structured attributes) belongs to this category. */
+  match: (a: StudyAttributes) => boolean
 }
 
-// Matching is driven by the raw exam description, NOT the app's stored modality
-// field — that keeps counts correct even for studies imported before a
-// classification fix (and independent of any reprocessing step).
+// Matching is driven by the study's structured attributes — reliable now that the
+// modality classifier is fixed — with fine anatomy read from `a.raw` (the RadLex
+// "anatomic focus" tier). Because `modality` is trustworthy, e.g. a CT angiogram
+// (modality CTA) is no longer double-counted as a routine CT abd/pel.
 
-// Modality signals read from the description
-const hasCT = (d: string) => /\bCT\b|COMPUTED\s+TOMOGRAPH|CAT\s+SCAN/.test(d)
-const hasMR = (d: string) => /\bMRI\b|\bMR\s/.test(d)   // excludes MRA/MRV (no boundary/space match)
-const hasUS = (d: string) => /\bUS\b|ULTRASOUND|SONOGR|DOPPLER|DUPLEX/.test(d)
-const isAngio = (d: string) => /ANGIOGRAPH|ANGIOGRAM|\bCTA\b|\bMRA\b|\bMRV\b/.test(d)
-
-// Anatomy signals
-const ABD_PEL = /\bABD\b|ABDOMEN|PELVI|RENAL|KIDNEY|LIVER|GALLBLAD|PANCREA|SPLEEN|AORTA|RETROPERITON|BLADDER|APPENDI/
+// Fine-anatomy signals (RadLex anatomic-focus tier), read from the raw description.
+const ABD_PEL = /\bABD\b|ABDOMEN|PELVI|\bPEL\b|RENAL|KIDNEY|LIVER|GALLBLAD|PANCREA|SPLEEN|AORTA|RETROPERITON|BLADDER|APPENDI/
 const SPINE = /SPINE|LUMBAR|CERVICAL|THORACIC|SACR|MYELOGRAM/
 const BRAIN = /BRAIN|\bHEAD\b|PITUITARY|\bIAC\b|ORBIT|SELLA/
 const LOWER_EXT_JOINT = /KNEE|ANKLE|\bHIP\b|\bFOOT\b|FEMUR|TIBIA|FIBULA|LOWER EXTREMITY|\bLOWER EXT/
 const MRI_BODY = /ABDOMEN|\bABD\b|PELVI|MRCP|ENTEROGRAPH|PROSTATE|KIDNEY|RENAL|LIVER|\bCHEST\b|BREAST|\bBODY\b|RECTUM|ADRENAL/
-const IMG_GUIDED_PROC = /BIOPSY|\bBX\b|DRAINAGE|\bDRAIN\b|ASPIRAT|\bFNA\b|THORACENTESIS|PARACENTESIS|LOCALIZATION/
-const PLAIN_FILM = /\bXR\b|\d+\s*VIEW|AP OR PA|PA\/LAT|\bKUB\b/
+
+const isMRI = (a: StudyAttributes) => a.modality === 'MRI'
+const isCT = (a: StudyAttributes) => a.modality === 'CT'
+const isUS = (a: StudyAttributes) => a.modality.startsWith('US')
 
 /**
  * The tracked ACGME categories that carry a minimum requirement.
@@ -74,80 +72,77 @@ export const ACGME_CATEGORIES: AcgmeCategory[] = [
     name: 'Chest x-ray',
     defaultMinimum: 1900,
     description: 'Plain radiographs of the chest (CXR) — excludes CT/US/MR of the chest.',
-    match: d =>
-      /\bCHEST\b|\bCXR\b/.test(d) && PLAIN_FILM.test(d) &&
-      !hasCT(d) && !hasMR(d) && !hasUS(d) && !/\bPET\b|SPECT|\bNM\b|ANGIO/.test(d),
+    match: a => a.modality === 'Radiography' && a.regions.includes('Chest'),
   },
   {
     id: 'cta-mra',
     name: 'CTA / MRA',
     defaultMinimum: 100,
     description: 'CT- and MR-angiography (incl. spelled-out "angiography"); excludes routine CT with rectal contrast.',
-    match: d =>
-      /\bCTA\b|\bMRA\b|\bMRV\b/.test(d) || ((hasCT(d) || hasMR(d)) && /ANGIOGRAPH|ANGIOGRAM/.test(d)),
+    match: a => a.subtype === 'angio' || a.subtype === 'venography',
   },
   {
     id: 'mammography',
     name: 'Mammography',
     defaultMinimum: 300,
     description: 'Screening and diagnostic mammography (and mammographic procedures).',
-    match: d => /MAMMO|\bTOMO\b/.test(d) && !hasMR(d),
+    match: a => a.modality.startsWith('Mammography'),
   },
   {
     id: 'ct-abd-pel',
     name: 'CT abd/pel',
     defaultMinimum: 600,
     description: 'CT studies that include the abdomen and/or pelvis (angiograms count under CTA/MRA instead).',
-    match: d => hasCT(d) && ABD_PEL.test(d) && !isAngio(d),
+    match: a => isCT(a) && ABD_PEL.test(a.raw),
   },
   {
     id: 'us-abd-pel',
     name: 'US abd/pel',
     defaultMinimum: 350,
     description: 'Ultrasound (incl. Doppler/duplex) of the abdomen and/or pelvis.',
-    match: d => hasUS(d) && ABD_PEL.test(d),
+    match: a => isUS(a) && ABD_PEL.test(a.raw),
   },
   {
     id: 'img-guided-bx-drainage',
     name: 'Image guided bx/drainage',
     defaultMinimum: 25,
     description: 'Image-guided biopsy, aspiration, drainage, para-/thoracentesis, or localization.',
-    match: d => IMG_GUIDED_PROC.test(d),
+    match: a => a.procedure !== undefined,
   },
   {
     id: 'mri-lower-ext-joints',
     name: 'MRI lower extremity joints',
     defaultMinimum: 20,
     description: 'MRI of knee, hip, ankle, foot, or other lower-extremity joints (excludes shoulders).',
-    match: d => hasMR(d) && !isAngio(d) && LOWER_EXT_JOINT.test(d),
+    match: a => isMRI(a) && LOWER_EXT_JOINT.test(a.raw),
   },
   {
     id: 'mri-brain',
     name: 'MRI brain',
     defaultMinimum: 110,
     description: 'MRI of the brain/head (excludes spine).',
-    match: d => hasMR(d) && !isAngio(d) && BRAIN.test(d) && !SPINE.test(d),
+    match: a => isMRI(a) && BRAIN.test(a.raw) && !SPINE.test(a.raw),
   },
   {
     id: 'pet',
     name: 'PET',
     defaultMinimum: 30,
     description: 'PET and PET/CT studies.',
-    match: d => /\bPET\b|POSITRON/.test(d),
+    match: a => a.modality.includes('PET'),
   },
   {
     id: 'mri-body',
     name: 'MRI body',
     defaultMinimum: 20,
     description: 'MRI of the torso/body (abdomen, pelvis, chest, MRCP, prostate, etc.).',
-    match: d => hasMR(d) && !isAngio(d) && MRI_BODY.test(d) && !SPINE.test(d) && !LOWER_EXT_JOINT.test(d),
+    match: a => isMRI(a) && MRI_BODY.test(a.raw) && !SPINE.test(a.raw) && !LOWER_EXT_JOINT.test(a.raw),
   },
   {
     id: 'mri-spine',
     name: 'MRI spine',
     defaultMinimum: 60,
     description: 'MRI of the cervical, thoracic, or lumbar spine.',
-    match: d => hasMR(d) && !isAngio(d) && SPINE.test(d),
+    match: a => isMRI(a) && SPINE.test(a.raw),
   },
 ]
 
@@ -161,9 +156,9 @@ export interface AcgmeCount {
 export function countAcgmeCategories(records: RVURecord[]): AcgmeCount[] {
   const results: AcgmeCount[] = ACGME_CATEGORIES.map(category => ({ category, count: 0, matched: [] }))
   for (const rec of records) {
-    const d = (rec.examDescription || '').toUpperCase()
+    const attrs = classifyStudy(rec.examDescription)
     for (const result of results) {
-      if (result.category.match(d)) {
+      if (result.category.match(attrs)) {
         result.count++
         result.matched.push(rec)
       }
