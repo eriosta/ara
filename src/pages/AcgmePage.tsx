@@ -168,7 +168,7 @@ export default function AcgmePage() {
               </span>
             )}
 
-            <div className="flex items-center gap-3 ml-auto shrink-0">
+            <div className="flex items-center gap-2 ml-auto shrink-0">
               <input
                 ref={fileRef}
                 type="file"
@@ -176,29 +176,32 @@ export default function AcgmePage() {
                 onChange={handleReportFile}
                 className="hidden"
               />
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors hover:bg-white/5"
-                style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
-                title="Upload your program's ACGME Defined-Category report to auto-fill Reported and Minimum"
-              >
-                <Upload className="w-3 h-3" /> Upload report
-              </button>
-              <button
-                onClick={handleExportWorkbook}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors"
-                style={{ backgroundColor: 'var(--accent-primary)', color: 'white' }}
-                title="Export an Excel workbook (summary + every study per category) to send to your coordinator"
-              >
-                <Download className="w-3 h-3" /> Export for coordinator
-              </button>
+              {/* Import / Export — the data-in / data-out pair for this page */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors hover:bg-white/5"
+                  style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
+                  title="Import your program's ACGME Defined-Category report to auto-fill Reported and Minimum"
+                >
+                  <Upload className="w-3.5 h-3.5" /> Import report
+                </button>
+                <button
+                  onClick={handleExportWorkbook}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-colors"
+                  style={{ backgroundColor: 'var(--accent-primary)', color: 'white' }}
+                  title="Export an Excel workbook (summary + every study per category) to send to your coordinator"
+                >
+                  <Download className="w-3.5 h-3.5" /> Export summary
+                </button>
+              </div>
               <button
                 onClick={resetOverrides}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors hover:bg-white/5"
-                style={{ color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}
+                className="p-1.5 rounded-md transition-colors hover:bg-white/5"
+                style={{ color: 'var(--text-muted)' }}
                 title="Reset minimums and reported numbers to defaults"
               >
-                <RotateCcw className="w-3 h-3" /> Reset
+                <RotateCcw className="w-4 h-4" />
               </button>
               <div className="w-px h-5 hidden sm:block" style={{ backgroundColor: 'var(--border-color)' }} />
               <div className="flex items-center gap-2 px-1.5">
