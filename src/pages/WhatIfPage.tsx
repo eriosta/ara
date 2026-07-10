@@ -2,7 +2,15 @@ import { useState, useMemo, useEffect } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import Sidebar from '@/components/Sidebar'
-import { Menu, User, LogOut, Sparkles, Plus, Minus, Wand2, RotateCcw, CheckCircle2 } from 'lucide-react'
+import { Menu, User, LogOut, Sparkles, Plus, Minus, Wand2, RotateCcw, CheckCircle2, Check } from 'lucide-react'
+
+interface StudyType {
+  key: string
+  modality: string
+  bodyPart: string
+  avgRvu: number
+  count: number
+}
 
 export default function WhatIfPage() {
   const { user, profile, signOut } = useAuthStore()
@@ -12,7 +20,9 @@ export default function WhatIfPage() {
   const [sidebarWidth, setSidebarWidth] = useState(224)
 
   const [mode, setMode] = useState<'hour' | 'day'>('hour')
+  const [included, setIncluded] = useState<Set<string>>(new Set())
   const [quantities, setQuantities] = useState<Record<string, number>>({})
+  const [modalityFilter, setModalityFilter] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (user && !initialFetchDone) {
@@ -21,63 +31,101 @@ export default function WhatIfPage() {
     }
   }, [user, initialFetchDone, fetchRecords])
 
-  // Per-body-part average wRVU + volume from the resident's own reads.
-  const { groups, avgPerCase } = useMemo(() => {
-    const map = new Map<string, { count: number; totalRvu: number }>()
-    let totalRvu = 0
+  // Study types = modality + body part combos (what defines a rotation's menu),
+  // each with the resident's own average wRVU and how many they've read.
+  const { studyTypes, modalities } = useMemo(() => {
+    const map = new Map<string, { modality: string; bodyPart: string; count: number; totalRvu: number }>()
     for (const r of records) {
-      const bp = r.bodyPart || 'Unknown'
-      const g = map.get(bp) || { count: 0, totalRvu: 0 }
+      const modality = r.modality || 'Unknown'
+      const bodyPart = r.bodyPart || 'Unknown'
+      const key = `${modality} · ${bodyPart}`
+      const g = map.get(key) || { modality, bodyPart, count: 0, totalRvu: 0 }
       g.count++
       g.totalRvu += r.wrvuEstimate
-      map.set(bp, g)
-      totalRvu += r.wrvuEstimate
+      map.set(key, g)
     }
-    const groups = Array.from(map.entries())
-      .map(([bodyPart, g]) => ({
-        bodyPart,
-        count: g.count,
-        avgRvu: g.totalRvu / g.count,
-        share: records.length ? g.count / records.length : 0,
-      }))
-      .filter(g => g.avgRvu > 0) // a 0-RVU group can never contribute to a target
+    const studyTypes: StudyType[] = Array.from(map.entries())
+      .map(([key, g]) => ({ key, modality: g.modality, bodyPart: g.bodyPart, avgRvu: g.totalRvu / g.count, count: g.count }))
+      .filter(g => g.avgRvu > 0)
       .sort((a, b) => b.count - a.count)
-    return { groups, avgPerCase: records.length ? totalRvu / records.length : 0 }
+    const modalities = [...new Set(studyTypes.map(s => s.modality))].sort()
+    return { studyTypes, modalities }
   }, [records])
 
   const hourlyTarget = goalRvuPerDay / 8
   const target = mode === 'hour' ? hourlyTarget : goalRvuPerDay
 
-  const { sum, totalCases } = useMemo(() => {
-    let sum = 0, totalCases = 0
-    for (const g of groups) {
-      const q = quantities[g.bodyPart] || 0
-      sum += q * g.avgRvu
+  const visible = useMemo(
+    () => (modalityFilter.size ? studyTypes.filter(s => modalityFilter.has(s.modality)) : studyTypes),
+    [studyTypes, modalityFilter]
+  )
+
+  const { sum, totalCases, includedCount } = useMemo(() => {
+    let sum = 0, totalCases = 0, includedCount = 0
+    for (const s of studyTypes) {
+      if (!included.has(s.key)) continue
+      includedCount++
+      const q = quantities[s.key] || 0
+      sum += q * s.avgRvu
       totalCases += q
     }
-    return { sum, totalCases }
-  }, [groups, quantities])
+    return { sum, totalCases, includedCount }
+  }, [studyTypes, included, quantities])
 
   const pct = target > 0 ? Math.min(100, (sum / target) * 100) : 0
   const met = sum >= target && sum > 0
   const remaining = Math.max(0, target - sum)
 
-  const setQty = (bp: string, n: number) =>
-    setQuantities(prev => ({ ...prev, [bp]: Math.max(0, n) }))
+  const toggleInclude = (key: string) =>
+    setIncluded(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+        setQuantities(q => ({ ...q, [key]: 0 }))
+      } else {
+        next.add(key)
+      }
+      return next
+    })
 
-  // Fill quantities from the resident's historical case-mix, scaled to the target.
-  const autoFill = () => {
-    if (avgPerCase <= 0) return
-    const casesNeeded = target / avgPerCase
-    const next: Record<string, number> = {}
-    for (const g of groups) {
-      const n = Math.round(casesNeeded * g.share)
-      if (n > 0) next[g.bodyPart] = n
-    }
-    setQuantities(next)
+  const setQty = (key: string, n: number) => {
+    const q = Math.max(0, n)
+    setQuantities(prev => ({ ...prev, [key]: q }))
+    if (q > 0) setIncluded(prev => new Set(prev).add(key))
   }
 
-  const clear = () => setQuantities({})
+  const toggleModality = (m: string) =>
+    setModalityFilter(prev => {
+      const next = new Set(prev)
+      next.has(m) ? next.delete(m) : next.add(m)
+      return next
+    })
+
+  // Distribute the target across the SELECTED study types, weighted by how often
+  // the resident actually reads each — a realistic mix for this rotation.
+  const autoFill = () => {
+    const set = studyTypes.filter(s => included.has(s.key))
+    const pool = set.length ? set : visible
+    if (!pool.length) return
+    const totalCount = pool.reduce((s, g) => s + g.count, 0)
+    const weightedAvg = pool.reduce((s, g) => s + g.avgRvu * g.count, 0) / totalCount
+    if (weightedAvg <= 0) return
+    const casesNeeded = target / weightedAvg
+    const nextQ: Record<string, number> = { ...quantities }
+    const nextInc = new Set(included)
+    for (const g of pool) {
+      const n = Math.round(casesNeeded * (g.count / totalCount))
+      nextQ[g.key] = n
+      nextInc.add(g.key)
+    }
+    setQuantities(nextQ)
+    setIncluded(nextInc)
+  }
+
+  const clear = () => {
+    setQuantities({})
+    setIncluded(new Set())
+  }
 
   const hasData = records.length > 0
 
@@ -103,7 +151,6 @@ export default function WhatIfPage() {
               <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>What-If</span>
             </div>
 
-            {/* Per hour / Per day toggle */}
             {hasData && (
               <div className="flex items-center rounded-lg overflow-hidden ml-2" style={{ border: '1px solid var(--border-color)' }}>
                 {(['hour', 'day'] as const).map(m => (
@@ -151,14 +198,14 @@ export default function WhatIfPage() {
             <>
               <div className="mb-4 rounded-xl bg-blue-500/5 border border-blue-500/20 px-4 py-3">
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Build a mix of studies that hits your target. Each row uses <span className="text-slate-300 font-medium">your own average wRVU</span> for that
-                  body part. Set how many of each you'd read and watch the total — or hit <span className="text-slate-300 font-medium">Auto-fill</span> to
-                  see a realistic mix based on how you actually read.
+                  <span className="text-slate-300 font-medium">Check the study types you're reading this rotation</span> (e.g. on neuro: CT &amp; MRI
+                  head, brain, spine), then hit <span className="text-slate-300 font-medium">Auto-fill</span> to see how many of each you'd need
+                  to hit your target — or dial the counts yourself. Averages come from your own reads.
                 </p>
               </div>
 
               {/* Target progress card */}
-              <div className="rounded-2xl bg-slate-900/50 border border-slate-800 p-5 mb-5 sticky top-[52px] z-10" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+              <div className="rounded-2xl border border-slate-800 p-5 mb-4 sticky top-[52px] z-10" style={{ backgroundColor: 'var(--bg-secondary)' }}>
                 <div className="flex items-end justify-between mb-3">
                   <div>
                     <div className="text-xs text-slate-500">Target · per {mode}</div>
@@ -167,9 +214,9 @@ export default function WhatIfPage() {
                     </div>
                     <div className="text-xs mt-0.5" style={{ color: met ? 'var(--accent-primary)' : 'var(--text-muted)' }}>
                       {met ? (
-                        <span className="inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Target met with {totalCases} stud{totalCases === 1 ? 'y' : 'ies'}</span>
+                        <span className="inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Met with {totalCases} stud{totalCases === 1 ? 'y' : 'ies'} per {mode}</span>
                       ) : (
-                        `${remaining.toFixed(1)} RVU to go · ${totalCases} selected`
+                        `${remaining.toFixed(1)} RVU to go · ${totalCases} studies selected`
                       )}
                     </div>
                   </div>
@@ -178,7 +225,7 @@ export default function WhatIfPage() {
                       onClick={autoFill}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-white transition-colors"
                       style={{ backgroundColor: 'var(--accent-primary)' }}
-                      title="Fill quantities from your historical case-mix, scaled to the target"
+                      title={includedCount ? 'Distribute the target across your checked study types' : 'Check some study types first, or auto-fill across all shown'}
                     >
                       <Wand2 className="w-3.5 h-3.5" /> Auto-fill
                     </button>
@@ -186,51 +233,93 @@ export default function WhatIfPage() {
                       onClick={clear}
                       className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] transition-colors hover:bg-white/5"
                       style={{ color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}
-                      title="Clear all quantities"
+                      title="Clear selections and counts"
                     >
                       <RotateCcw className="w-3.5 h-3.5" /> Clear
                     </button>
                   </div>
                 </div>
                 <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${met ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                    style={{ width: `${pct}%` }}
-                  />
+                  <div className={`h-full rounded-full transition-all ${met ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
                 </div>
               </div>
 
-              {/* Body-part rows */}
+              {/* Modality filter to quickly narrow to your rotation */}
+              {modalities.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                  <span className="text-[11px] mr-1" style={{ color: 'var(--text-muted)' }}>Filter:</span>
+                  {modalities.map(m => {
+                    const on = modalityFilter.has(m)
+                    return (
+                      <button
+                        key={m}
+                        onClick={() => toggleModality(m)}
+                        className="px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors"
+                        style={{
+                          backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
+                          color: on ? 'white' : 'var(--text-muted)',
+                          border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                        }}
+                      >
+                        {m}
+                      </button>
+                    )
+                  })}
+                  {modalityFilter.size > 0 && (
+                    <button onClick={() => setModalityFilter(new Set())} className="text-[11px] px-1.5 hover:opacity-70" style={{ color: 'var(--text-muted)' }}>
+                      clear
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Study-type rows */}
               <div className="space-y-1.5">
-                {groups.map(g => {
-                  const q = quantities[g.bodyPart] || 0
-                  const subtotal = q * g.avgRvu
-                  const active = q > 0
+                {visible.map(s => {
+                  const on = included.has(s.key)
+                  const q = quantities[s.key] || 0
+                  const subtotal = q * s.avgRvu
                   return (
                     <div
-                      key={g.bodyPart}
-                      className="flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-colors"
+                      key={s.key}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors"
                       style={{
-                        backgroundColor: active ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
-                        borderColor: active ? 'rgba(16,185,129,0.3)' : 'var(--border-color)',
+                        backgroundColor: on ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
+                        borderColor: on ? 'rgba(16,185,129,0.3)' : 'var(--border-color)',
                       }}
                     >
+                      {/* checkbox = "I read this on this rotation" */}
+                      <button
+                        onClick={() => toggleInclude(s.key)}
+                        className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-colors"
+                        style={{
+                          backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
+                          border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                        }}
+                        title={on ? 'Remove from your rotation' : 'Add to your rotation'}
+                      >
+                        {on && <Check className="w-3.5 h-3.5 text-white" />}
+                      </button>
+
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{g.bodyPart}</div>
+                        <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                          <span style={{ color: 'var(--accent-primary)' }}>{s.modality}</span>
+                          <span className="text-slate-500"> · </span>
+                          {s.bodyPart}
+                        </div>
                         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          {g.avgRvu.toFixed(2)} RVU avg · you've read {g.count.toLocaleString()}
+                          {s.avgRvu.toFixed(2)} RVU avg · you've read {s.count.toLocaleString()}
                         </div>
                       </div>
 
-                      {/* subtotal */}
-                      <div className="text-right w-16 shrink-0">
-                        {active && <span className="text-xs font-mono text-emerald-400">{subtotal.toFixed(1)}</span>}
+                      <div className="text-right w-14 shrink-0">
+                        {q > 0 && <span className="text-xs font-mono text-emerald-400">{subtotal.toFixed(1)}</span>}
                       </div>
 
                       {/* stepper */}
                       <div className="flex items-center gap-1 shrink-0">
                         <button
-                          onClick={() => setQty(g.bodyPart, q - 1)}
+                          onClick={() => setQty(s.key, q - 1)}
                           disabled={q === 0}
                           className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 disabled:opacity-30"
                           style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
@@ -242,11 +331,11 @@ export default function WhatIfPage() {
                           min={0}
                           value={q === 0 ? '' : q}
                           placeholder="0"
-                          onChange={e => setQty(g.bodyPart, Math.floor(Number(e.target.value) || 0))}
+                          onChange={e => setQty(s.key, Math.floor(Number(e.target.value) || 0))}
                           className="w-11 text-center py-1 rounded-lg text-sm outline-none bg-slate-950 border border-slate-700 text-slate-200 placeholder:text-slate-600"
                         />
                         <button
-                          onClick={() => setQty(g.bodyPart, q + 1)}
+                          onClick={() => setQty(s.key, q + 1)}
                           className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
                           style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
                         >
@@ -256,6 +345,9 @@ export default function WhatIfPage() {
                     </div>
                   )
                 })}
+                {visible.length === 0 && (
+                  <p className="text-center text-sm text-slate-500 py-8">No study types match that filter.</p>
+                )}
               </div>
 
               <p className="text-[11px] text-slate-600 mt-4 leading-relaxed">
