@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useDataStore } from '@/stores/dataStore'
 import Sidebar from '@/components/Sidebar'
-import { Menu, User, LogOut, Sparkles, Plus, Minus, Wand2, RotateCcw, CheckCircle2, Check } from 'lucide-react'
+import { Menu, User, LogOut, Sparkles, Plus, Minus, Wand2, CheckCircle2, Check, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface StudyType {
@@ -52,6 +52,8 @@ export default function WhatIfPage() {
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [modalityFilter, setModalityFilter] = useState<Set<string>>(new Set())
   const [activePreset, setActivePreset] = useState<string | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
+  const didAutoSelect = useRef(false)
 
   useEffect(() => {
     if (user && !initialFetchDone) {
@@ -101,11 +103,9 @@ export default function WhatIfPage() {
     return { sum, totalCases, includedCount }
   }, [studyTypes, included, quantities])
 
-  const pct = target > 0 ? Math.min(100, (sum / target) * 100) : 0
   const met = sum >= target && sum > 0
-  const remaining = Math.max(0, target - sum)
 
-  // The selected example mix (for the summary chips), highest-RVU first.
+  // The selected example mix (highest-RVU first).
   const mix = useMemo(
     () => studyTypes
       .filter(s => included.has(s.key) && (quantities[s.key] || 0) > 0)
@@ -113,6 +113,8 @@ export default function WhatIfPage() {
       .sort((a, b) => b.subtotal - a.subtotal),
     [studyTypes, included, quantities]
   )
+
+  const headingLabel = activePreset ? (ROTATIONS.find(r => r.id === activePreset)?.label ?? 'mix') : 'custom'
 
   const toggleInclude = (key: string) => {
     setActivePreset(null)
@@ -159,6 +161,22 @@ export default function WhatIfPage() {
     const t = mode === 'hour' ? goalRvuPerDay / 8 : goalRvuPerDay
     setQuantities(computeMix(matched, t))
   }, [activePreset, mode, studyTypes, goalRvuPerDay])
+
+  // On first load, auto-select the resident's dominant rotation so the page
+  // shows an answer immediately (demos itself).
+  useEffect(() => {
+    if (didAutoSelect.current || !studyTypes.length) return
+    didAutoSelect.current = true
+    let best: string | null = null, bestCount = 0
+    for (const r of ROTATIONS) {
+      const c = studyTypes.filter(r.match).reduce((s, g) => s + g.count, 0)
+      if (c > bestCount) { bestCount = c; best = r.id }
+    }
+    if (best) {
+      setActivePreset(best)
+      setIncluded(new Set(studyTypes.filter(ROTATIONS.find(r => r.id === best)!.match).map(m => m.key)))
+    }
+  }, [studyTypes])
 
   const toggleModality = (m: string) =>
     setModalityFilter(prev => {
@@ -253,14 +271,7 @@ export default function WhatIfPage() {
             </div>
           ) : (
             <>
-              <div className="mb-4 rounded-xl bg-blue-500/5 border border-blue-500/20 px-4 py-3">
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  <span className="text-slate-300 font-medium">Pick your rotation</span> to auto-select its studies and get an example case mix that
-                  hits your target — or check study types yourself. Counts and averages come from your own reads.
-                </p>
-              </div>
-
-              {/* Rotation presets — one click selects a subspecialty's study types */}
+              {/* Rotation presets — one click selects a subspecialty's studies */}
               <div className="flex flex-wrap items-center gap-1.5 mb-4">
                 <span className="text-[11px] mr-1 font-medium" style={{ color: 'var(--text-muted)' }}>Rotation:</span>
                 {ROTATIONS.map(r => {
@@ -280,174 +291,175 @@ export default function WhatIfPage() {
                     </button>
                   )
                 })}
+                {(mix.length > 0 || activePreset) && (
+                  <button onClick={clear} className="ml-1 text-[11px] px-1.5 hover:opacity-70" style={{ color: 'var(--text-muted)' }}>clear</button>
+                )}
               </div>
 
-              {/* Target progress card */}
-              <div className="rounded-2xl border border-slate-800 p-5 mb-4 sticky top-[52px] z-10" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                <div className="flex items-end justify-between mb-3">
-                  <div>
-                    <div className="text-xs text-slate-500">Target · per {mode}</div>
-                    <div className="text-2xl font-bold" style={{ color: met ? 'var(--accent-primary)' : 'var(--text-primary)' }}>
-                      {sum.toFixed(1)} <span className="text-slate-500 text-lg font-normal">/ {target.toFixed(1)} RVU</span>
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: met ? 'var(--accent-primary)' : 'var(--text-muted)' }}>
-                      {met ? (
-                        <span className="inline-flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Met with {totalCases} stud{totalCases === 1 ? 'y' : 'ies'} per {mode}</span>
-                      ) : (
-                        `${remaining.toFixed(1)} RVU to go · ${totalCases} studies selected`
-                      )}
-                    </div>
+              {/* Hero: the answer, front and center */}
+              <div className="rounded-2xl border border-slate-800 p-5" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                <div className="flex items-baseline justify-between gap-3 mb-4">
+                  <h2 className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Your <span className="font-semibold capitalize" style={{ color: 'var(--text-primary)' }}>{headingLabel}</span> {mode} ≈
+                  </h2>
+                  <div className="text-right whitespace-nowrap">
+                    <span className="text-xl font-bold" style={{ color: met ? 'var(--accent-primary)' : 'var(--text-primary)' }}>{sum.toFixed(1)}</span>
+                    <span className="text-slate-500 text-sm"> / {target.toFixed(1)} RVU</span>
+                    {met && <CheckCircle2 className="inline w-4 h-4 ml-1 mb-0.5 text-emerald-400" />}
+                    {mix.length > 0 && (
+                      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{totalCases} studies per {mode}</div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
+                </div>
+
+                {mix.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-6 text-center">Pick a rotation above to see how many of each study you'd read.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {mix.map(m => {
+                      const widthPct = target > 0 ? Math.min(100, (m.subtotal / target) * 100) : 0
+                      return (
+                        <div key={m.key} className="flex items-center gap-3">
+                          <div className="w-36 sm:w-44 shrink-0 text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
+                            <span style={{ color: 'var(--accent-primary)' }}>{m.modality}</span> · {m.bodyPart}
+                          </div>
+                          <div className="flex-1 h-5 rounded-md overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                            <div className="h-full rounded-md" style={{ width: `${widthPct}%`, backgroundColor: 'var(--accent-primary)', opacity: 0.85 }} />
+                          </div>
+                          <div className="w-9 text-right text-xs font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>×{m.qty}</div>
+                          <div className="w-11 text-right text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{m.subtotal.toFixed(1)}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Fine-tune expander — the detailed editing lives here */}
+              <button
+                onClick={() => setShowDetails(v => !v)}
+                className="mt-4 flex items-center gap-1.5 text-xs font-medium transition-colors hover:opacity-80"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <ChevronDown className={`w-4 h-4 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
+                Fine-tune the mix
+              </button>
+
+              {showDetails && (
+                <div className="mt-3 animate-slide-down">
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
                     <button
                       onClick={autoFill}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-white transition-colors"
                       style={{ backgroundColor: 'var(--accent-primary)' }}
-                      title={includedCount ? 'Distribute the target across your checked study types' : 'Check some study types first, or auto-fill across all shown'}
+                      title={includedCount ? 'Distribute the target across your checked study types' : 'Auto-fill across the study types shown'}
                     >
                       <Wand2 className="w-3.5 h-3.5" /> Auto-fill
                     </button>
-                    <button
-                      onClick={clear}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] transition-colors hover:bg-white/5"
-                      style={{ color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}
-                      title="Clear selections and counts"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" /> Clear
-                    </button>
+                    {modalities.length > 1 && (
+                      <>
+                        <span className="text-[11px] ml-1" style={{ color: 'var(--text-muted)' }}>Filter:</span>
+                        {modalities.map(m => {
+                          const on = modalityFilter.has(m)
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => toggleModality(m)}
+                              className="px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors"
+                              style={{
+                                backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
+                                color: on ? 'white' : 'var(--text-muted)',
+                                border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                              }}
+                            >
+                              {m}
+                            </button>
+                          )
+                        })}
+                      </>
+                    )}
                   </div>
-                </div>
-                <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${met ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} />
-                </div>
 
-                {/* Example mix summary */}
-                {mix.length > 0 && (
-                  <div className="mt-3 pt-3 flex flex-wrap gap-1.5" style={{ borderTop: '1px solid var(--border-color)' }}>
-                    <span className="text-[11px] mr-1" style={{ color: 'var(--text-muted)' }}>Example mix:</span>
-                    {mix.map(m => (
-                      <span
-                        key={m.key}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px]"
-                        style={{ backgroundColor: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: 'var(--accent-primary)' }}
-                      >
-                        <span className="font-mono font-semibold">{m.qty}×</span> {m.modality} · {m.bodyPart}
-                      </span>
-                    ))}
+                  <div className="space-y-1.5">
+                    {visible.map(s => {
+                      const on = included.has(s.key)
+                      const q = quantities[s.key] || 0
+                      const subtotal = q * s.avgRvu
+                      return (
+                        <div
+                          key={s.key}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors"
+                          style={{
+                            backgroundColor: on ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
+                            borderColor: on ? 'rgba(16,185,129,0.3)' : 'var(--border-color)',
+                          }}
+                        >
+                          <button
+                            onClick={() => toggleInclude(s.key)}
+                            className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-colors"
+                            style={{
+                              backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
+                              border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                            }}
+                            title={on ? 'Remove from your rotation' : 'Add to your rotation'}
+                          >
+                            {on && <Check className="w-3.5 h-3.5 text-white" />}
+                          </button>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                              <span style={{ color: 'var(--accent-primary)' }}>{s.modality}</span>
+                              <span className="text-slate-500"> · </span>
+                              {s.bodyPart}
+                            </div>
+                            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                              {s.avgRvu.toFixed(2)} RVU avg · you've read {s.count.toLocaleString()}
+                            </div>
+                          </div>
+
+                          <div className="text-right w-14 shrink-0">
+                            {q > 0 && <span className="text-xs font-mono text-emerald-400">{subtotal.toFixed(1)}</span>}
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => setQty(s.key, q - 1)}
+                              disabled={q === 0}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 disabled:opacity-30"
+                              style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            <input
+                              type="number"
+                              min={0}
+                              value={q === 0 ? '' : q}
+                              placeholder="0"
+                              onChange={e => setQty(s.key, Math.floor(Number(e.target.value) || 0))}
+                              className="w-11 text-center py-1 rounded-lg text-sm outline-none bg-slate-950 border border-slate-700 text-slate-200 placeholder:text-slate-600"
+                            />
+                            <button
+                              onClick={() => setQty(s.key, q + 1)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+                              style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {visible.length === 0 && (
+                      <p className="text-center text-sm text-slate-500 py-8">No study types match that filter.</p>
+                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Modality filter to quickly narrow to your rotation */}
-              {modalities.length > 1 && (
-                <div className="flex flex-wrap items-center gap-1.5 mb-3">
-                  <span className="text-[11px] mr-1" style={{ color: 'var(--text-muted)' }}>Filter:</span>
-                  {modalities.map(m => {
-                    const on = modalityFilter.has(m)
-                    return (
-                      <button
-                        key={m}
-                        onClick={() => toggleModality(m)}
-                        className="px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors"
-                        style={{
-                          backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
-                          color: on ? 'white' : 'var(--text-muted)',
-                          border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
-                        }}
-                      >
-                        {m}
-                      </button>
-                    )
-                  })}
-                  {modalityFilter.size > 0 && (
-                    <button onClick={() => setModalityFilter(new Set())} className="text-[11px] px-1.5 hover:opacity-70" style={{ color: 'var(--text-muted)' }}>
-                      clear
-                    </button>
-                  )}
+                  <p className="text-[11px] text-slate-600 mt-4 leading-relaxed">
+                    Averages come from your own reads, so the mix reflects your real complexity. This is a planning estimate —
+                    actual RVUs vary by exact study and contrast.
+                  </p>
                 </div>
               )}
-
-              {/* Study-type rows */}
-              <div className="space-y-1.5">
-                {visible.map(s => {
-                  const on = included.has(s.key)
-                  const q = quantities[s.key] || 0
-                  const subtotal = q * s.avgRvu
-                  return (
-                    <div
-                      key={s.key}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors"
-                      style={{
-                        backgroundColor: on ? 'rgba(16,185,129,0.06)' : 'var(--bg-card)',
-                        borderColor: on ? 'rgba(16,185,129,0.3)' : 'var(--border-color)',
-                      }}
-                    >
-                      {/* checkbox = "I read this on this rotation" */}
-                      <button
-                        onClick={() => toggleInclude(s.key)}
-                        className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 transition-colors"
-                        style={{
-                          backgroundColor: on ? 'var(--accent-primary)' : 'transparent',
-                          border: on ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
-                        }}
-                        title={on ? 'Remove from your rotation' : 'Add to your rotation'}
-                      >
-                        {on && <Check className="w-3.5 h-3.5 text-white" />}
-                      </button>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                          <span style={{ color: 'var(--accent-primary)' }}>{s.modality}</span>
-                          <span className="text-slate-500"> · </span>
-                          {s.bodyPart}
-                        </div>
-                        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          {s.avgRvu.toFixed(2)} RVU avg · you've read {s.count.toLocaleString()}
-                        </div>
-                      </div>
-
-                      <div className="text-right w-14 shrink-0">
-                        {q > 0 && <span className="text-xs font-mono text-emerald-400">{subtotal.toFixed(1)}</span>}
-                      </div>
-
-                      {/* stepper */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => setQty(s.key, q - 1)}
-                          disabled={q === 0}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 disabled:opacity-30"
-                          style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <input
-                          type="number"
-                          min={0}
-                          value={q === 0 ? '' : q}
-                          placeholder="0"
-                          onChange={e => setQty(s.key, Math.floor(Number(e.target.value) || 0))}
-                          className="w-11 text-center py-1 rounded-lg text-sm outline-none bg-slate-950 border border-slate-700 text-slate-200 placeholder:text-slate-600"
-                        />
-                        <button
-                          onClick={() => setQty(s.key, q + 1)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-                          style={{ border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {visible.length === 0 && (
-                  <p className="text-center text-sm text-slate-500 py-8">No study types match that filter.</p>
-                )}
-              </div>
-
-              <p className="text-[11px] text-slate-600 mt-4 leading-relaxed">
-                Averages come from your own reads, so the mix reflects your real complexity. This is a planning estimate — actual
-                RVUs vary by exact study and contrast.
-              </p>
             </>
           )}
         </main>
