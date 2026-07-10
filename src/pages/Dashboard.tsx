@@ -101,14 +101,14 @@ export default function Dashboard() {
               {/* Key metrics */}
               <MetricsOverview />
 
-              {/* Daily trend vs goal — the hero view */}
-              <div data-tour="chart-daily">
-                <DailyTrendChart />
-              </div>
-
-              {/* Hourly efficiency */}
-              <div data-tour="chart-hourly">
-                <HourlyEfficiencyChart />
+              {/* Daily trend + hourly efficiency, side by side */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div data-tour="chart-daily">
+                  <DailyTrendChart />
+                </div>
+                <div data-tour="chart-hourly">
+                  <HourlyEfficiencyChart />
+                </div>
               </div>
             </div>
           )}

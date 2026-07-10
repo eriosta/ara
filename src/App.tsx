@@ -5,6 +5,7 @@ import AuthPage from '@/pages/AuthPage'
 import Dashboard from '@/pages/Dashboard'
 import BreakdownPage from '@/pages/BreakdownPage'
 import AcgmePage from '@/pages/AcgmePage'
+import WhatIfPage from '@/pages/WhatIfPage'
 import ReferencePage from '@/pages/ReferencePage'
 import LoadingScreen from '@/components/LoadingScreen'
 import toast from 'react-hot-toast'
@@ -150,6 +151,16 @@ export default function App() {
             <ProtectedRoute>
               <div className="animate-fade-in">
                 <AcgmePage />
+              </div>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/what-if"
+          element={
+            <ProtectedRoute>
+              <div className="animate-fade-in">
+                <WhatIfPage />
               </div>
             </ProtectedRoute>
           }

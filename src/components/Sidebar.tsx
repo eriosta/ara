@@ -7,7 +7,7 @@ import {
   X, Upload,
   Trash2, ChevronDown,
   FileSpreadsheet, Calendar, Database, RefreshCw,
-  LayoutDashboard, Table2, Target, BookOpen
+  LayoutDashboard, Table2, Target, BookOpen, Sparkles
 } from 'lucide-react'
 import FileUpload from './FileUpload'
 import Logo from './Logo'
@@ -268,6 +268,18 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
               >
                 <Target className="w-4 h-4" />
                 <span>ACGME Minimums</span>
+              </Link>
+              <Link
+                to="/what-if"
+                onClick={onClose}
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/what-if'
+                    ? 'bg-emerald-500/10 text-emerald-400'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>What-If</span>
               </Link>
               <Link
                 to="/reference"
