@@ -16,8 +16,8 @@ export const DASHBOARD_STEPS: Step[] = [
   },
   {
     target: '[data-tour="sidebar-export"]',
-    title: 'Export Reports',
-    content: 'Export your data as a PDF summary report or download the raw CSV for further analysis.',
+    title: 'Export Data',
+    content: 'Download all your studies as an Excel file for further analysis.',
     placement: 'right',
   },
   {
@@ -45,15 +45,9 @@ export const DASHBOARD_STEPS: Step[] = [
     placement: 'top',
   },
   {
-    target: '[data-tour="section-patterns"]',
-    title: 'Work Patterns',
-    content: 'Discover which hours and days of the week you\'re most productive. Use this to optimize your schedule.',
-    placement: 'top',
-  },
-  {
-    target: '[data-tour="section-case-analysis"]',
-    title: 'Case Analysis',
-    content: 'See your top case types and modality distribution. Understand where your RVUs are coming from.',
+    target: '[data-tour="chart-hourly"]',
+    title: 'Hourly Efficiency',
+    content: 'See which hours of the day you\'re most productive, to help plan your reading sessions.',
     placement: 'top',
   },
 ]

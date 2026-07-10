@@ -5,9 +5,6 @@ import Sidebar from '@/components/Sidebar'
 import MetricsOverview from '@/components/MetricsOverview'
 import DailyTrendChart from '@/components/charts/DailyTrendChart'
 import HourlyEfficiencyChart from '@/components/charts/HourlyEfficiencyChart'
-import CaseMixChart from '@/components/charts/CaseMixChart'
-import ModalityPieChart from '@/components/charts/ModalityPieChart'
-import HeatmapChart from '@/components/charts/HeatmapChart'
 import EmptyState from '@/components/EmptyState'
 import DashboardToolbar from '@/components/DashboardToolbar'
 import ProductTour, { DASHBOARD_STEPS } from '@/components/ProductTour'
@@ -101,40 +98,17 @@ export default function Dashboard() {
             <EmptyState />
           ) : (
             <div className="space-y-6 animate-fade-in">
-              {/* Metrics Overview */}
+              {/* Key metrics */}
               <MetricsOverview />
 
-              {/* Section: Trends */}
-              <div className="flex items-center gap-3 pt-2">
-                <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Trends</span>
-                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
-              </div>
+              {/* Daily trend vs goal — the hero view */}
               <div data-tour="chart-daily">
                 <DailyTrendChart />
               </div>
 
-              {/* Section: Patterns */}
-              <div data-tour="section-patterns">
-                <div className="flex items-center gap-3 pt-2 mb-6">
-                  <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Patterns</span>
-                  <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
-                </div>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                  <HourlyEfficiencyChart />
-                  <HeatmapChart />
-                </div>
-              </div>
-
-              {/* Section: Case Analysis */}
-              <div data-tour="section-case-analysis">
-                <div className="flex items-center gap-3 pt-2 mb-6">
-                  <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Case Analysis</span>
-                  <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
-                </div>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                  <CaseMixChart />
-                  <ModalityPieChart />
-                </div>
+              {/* Hourly efficiency */}
+              <div data-tour="chart-hourly">
+                <HourlyEfficiencyChart />
               </div>
             </div>
           )}

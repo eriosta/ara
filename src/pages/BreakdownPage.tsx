@@ -486,15 +486,15 @@ export default function BreakdownPage() {
             className="flex items-center gap-2 flex-wrap px-4 lg:px-6 py-2"
             style={{ borderBottom: '1px solid var(--border-color)' }}
           >
-            {/* Search */}
-            <div className="relative" data-tour="breakdown-search">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+            {/* Search — prominent: it's the primary way to find a study */}
+            <div className="relative flex-1 min-w-[180px] max-w-md" data-tour="breakdown-search">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: searchTerm ? 'var(--accent-primary)' : 'var(--text-muted)' }} />
               <input
                 type="text"
-                placeholder="Search studies..."
+                placeholder="Search studies — e.g. “MRI knee”, “CT abdomen”…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-7 pr-7 py-1.5 rounded-lg text-xs outline-none w-40 sm:w-48"
+                className="w-full pl-9 pr-16 py-2 rounded-lg text-sm outline-none"
                 style={{
                   backgroundColor: 'var(--bg-secondary)',
                   border: searchTerm ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
@@ -502,13 +502,19 @@ export default function BreakdownPage() {
                 }}
               />
               {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  <X className="w-3 h-3" />
-                </button>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                  <span className="text-[11px] font-mono whitespace-nowrap" style={{ color: 'var(--accent-primary)' }}>
+                    {filteredTotals.count.toLocaleString()}
+                  </span>
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="hover:opacity-70 transition-opacity"
+                    style={{ color: 'var(--text-muted)' }}
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               )}
             </div>
 

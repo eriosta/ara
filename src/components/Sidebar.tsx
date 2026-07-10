@@ -5,14 +5,13 @@ import { useDataStore } from '@/stores/dataStore'
 import { supabase } from '@/lib/supabase'
 import {
   X, Upload,
-  FileText, Trash2, ChevronDown,
+  Trash2, ChevronDown,
   FileSpreadsheet, Calendar, Database, RefreshCw,
   LayoutDashboard, Table2, Target, BookOpen
 } from 'lucide-react'
 import FileUpload from './FileUpload'
 import Logo from './Logo'
-import { generatePDF } from '@/lib/pdfExport'
-import { recordsToExportRows, downloadCSV, downloadExcel } from '@/lib/exportUtils'
+import { recordsToExportRows, downloadExcel } from '@/lib/exportUtils'
 import toast from 'react-hot-toast'
 
 interface UploadRecord {
@@ -55,8 +54,8 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
     }
   }, [dragging, onWidthChange])
   const location = useLocation()
-  const { user, profile } = useAuthStore()
-  const { records, metrics, clearRecords, reprocessRecords, goalRvuPerDay, dailyData, caseMixData, modalityData, loading } = useDataStore()
+  const { user } = useAuthStore()
+  const { records, clearRecords, reprocessRecords, loading } = useDataStore()
   const [showUpload, setShowUpload] = useState(false)
   const [showDataModal, setShowDataModal] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -159,31 +158,9 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
     }
   }
 
-  const handleExportPDF = () => {
-    if (!metrics) {
-      toast.error('No data to export')
-      return
-    }
-
-    try {
-      generatePDF({
-        metrics,
-        dailyData,
-        caseMixData,
-        modalityData,
-        goalRvuPerDay,
-        profileName: profile?.full_name || 'Resident',
-      })
-      toast.success('PDF downloaded!')
-    } catch (error) {
-      console.error('PDF export error:', error)
-      toast.error(`PDF export failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }
-
   // Exports the full in-memory dataset (already loaded by the store) so it works
   // instantly and never hangs on a database round-trip. Any failure is surfaced.
-  const handleExport = async (fmt: 'csv' | 'excel') => {
+  const handleExport = async () => {
     if (records.length === 0) {
       toast.error('No data to export. Upload some data first.')
       return
@@ -193,12 +170,8 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
     try {
       const rows = recordsToExportRows(records)
       const dateStr = new Date().toISOString().split('T')[0]
-      if (fmt === 'csv') {
-        downloadCSV(rows, `myRVU_Export_${dateStr}.csv`)
-      } else {
-        downloadExcel(rows, `myRVU_Export_${dateStr}.xlsx`)
-      }
-      toast.success(`Exported ${rows.length.toLocaleString()} records to ${fmt === 'csv' ? 'CSV' : 'Excel'}`)
+      downloadExcel(rows, `myRVU_Export_${dateStr}.xlsx`)
+      toast.success(`Exported ${rows.length.toLocaleString()} records to Excel`)
     } catch (error) {
       console.error('Export error:', error)
       toast.error(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -353,23 +326,13 @@ export default function Sidebar({ isOpen, onClose, width, onWidthChange }: Sideb
               </button>
             )}
 
-            {/* Export PDF */}
-            <button
-              onClick={handleExportPDF}
-              disabled={!metrics}
-              className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
-              data-tour="sidebar-export"
-            >
-              <FileText className="w-5 h-5" style={{ color: 'var(--info)' }} />
-              <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export PDF Report</span>
-            </button>
-
             {/* Export raw data (Excel) */}
             <button
-              onClick={() => handleExport('excel')}
+              onClick={handleExport}
               disabled={exporting || records.length === 0}
               className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed interactive-item"
               title="Download all studies as an Excel (.xlsx) file"
+              data-tour="sidebar-export"
             >
               <FileSpreadsheet className="w-5 h-5" style={{ color: 'var(--info)' }} />
               <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Export Excel Data</span>
